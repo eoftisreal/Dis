@@ -17,6 +17,11 @@ jobs:
           dotnet-version: '10.0.x'
       - name: Protocol, security and Windows ADB startup tests
         run: dotnet run --project tests/Dis.Core.Tests -c Release -- --check-installed-adb
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install independent codec verifier
+        run: python -m pip install av==16.0.1
       - name: Build native H.264 encoder
         shell: pwsh
         run: |
@@ -26,9 +31,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & artifacts/native/Release/DisCodecSmoke.exe artifacts/native-smoke.h264
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          ffmpeg -v error -y -i artifacts/native-smoke.h264 -frames:v 24 -pix_fmt yuv420p -f rawvideo artifacts/native-smoke.yuv
+          python tools/verify_h264.py artifacts/native-smoke.h264
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          if ((Get-Item artifacts/native-smoke.yuv).Length -ne (24*320*180*3/2)) { throw 'Encoded stream did not decode to all 24 pictures.' }
       - name: Build Windows app
         run: dotnet publish src/Dis.Host/Dis.Host.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o artifacts/windows
       - name: Package native codec and signed driver

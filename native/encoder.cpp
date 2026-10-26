@@ -76,6 +76,10 @@ public:
         CHECK_HR(output->SetUINT32(MF_MT_AVG_BITRATE, bitrate));
         CHECK_HR(output->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive));
         CHECK_HR(output->SetUINT32(MF_MT_MPEG2_PROFILE, eAVEncH264VProfile_Base));
+        output->SetUINT32(MF_MT_VIDEO_PRIMARIES, MFVideoPrimaries_BT709);
+        output->SetUINT32(MF_MT_TRANSFER_FUNCTION, MFVideoTransFunc_709);
+        output->SetUINT32(MF_MT_YUV_MATRIX, MFVideoTransferMatrix_BT709);
+        output->SetUINT32(MF_MT_VIDEO_NOMINAL_RANGE, MFNominalRange_16_235);
         CHECK_HR(MFSetAttributeSize(output.Get(), MF_MT_FRAME_SIZE, width, height));
         CHECK_HR(MFSetAttributeRatio(output.Get(), MF_MT_FRAME_RATE, fps, 1));
         MFSetAttributeRatio(output.Get(), MF_MT_PIXEL_ASPECT_RATIO, 1, 1);

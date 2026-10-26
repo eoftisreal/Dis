@@ -14,7 +14,9 @@ internal static class DisplayModes
             if (!EnumDisplayDevices(null, i, ref device, 0)) break;
             if ((device.Flags & 8) != 0) continue;
             bool virtualDisplay = device.Description.Contains("Virtual Display Driver", StringComparison.OrdinalIgnoreCase)
-                || device.Description.Contains("Dis Virtual Display", StringComparison.OrdinalIgnoreCase);
+                || device.Description.Contains("Dis Virtual Display", StringComparison.OrdinalIgnoreCase)
+                || device.Description.Contains("VirtualDisplayDriver", StringComparison.OrdinalIgnoreCase)
+                || device.Description.Contains("MttVDD", StringComparison.OrdinalIgnoreCase);
             result.Add(new(device.Name, device.Description, (device.Flags & 1) != 0, virtualDisplay));
         }
         return result;

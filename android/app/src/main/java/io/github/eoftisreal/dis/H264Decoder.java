@@ -32,8 +32,10 @@ public final class H264Decoder implements AutoCloseable {
         format.setInteger(MediaFormat.KEY_COLOR_STANDARD,MediaFormat.COLOR_STANDARD_BT709);
         format.setInteger(MediaFormat.KEY_COLOR_RANGE,MediaFormat.COLOR_RANGE_LIMITED);
         format.setInteger(MediaFormat.KEY_COLOR_TRANSFER,MediaFormat.COLOR_TRANSFER_SDR_VIDEO);
-        if (Build.VERSION.SDK_INT>=30) format.setInteger(MediaFormat.KEY_LOW_LATENCY,1);
         codec=MediaCodec.createDecoderByType("video/avc");
+        if (Build.VERSION.SDK_INT>=30 && codec.getCodecInfo().getCapabilitiesForType("video/avc")
+            .isFeatureSupported(android.media.MediaCodecInfo.CodecCapabilities.FEATURE_LowLatency))
+            format.setInteger(MediaFormat.KEY_LOW_LATENCY,1);
         try { codec.configure(format,surface,null,0); codec.start(); }
         catch (RuntimeException e) { codec.release(); throw new IOException("Android H.264 decoder could not start",e); }
         view.setVideoGeometry(width,height);

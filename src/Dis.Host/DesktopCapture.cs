@@ -20,8 +20,9 @@ internal sealed class DesktopCapture : IDisposable
     {
         this.source = source;
         Size = size;
-        desktop = new(source.Width, source.Height, PixelFormat.Format32bppArgb);
-        scaled = new(size.Width, size.Height, PixelFormat.Format32bppArgb);
+        // GDI BitBlt does not supply alpha. RGB prevents a zero alpha byte from making scaling transparent/black.
+        desktop = new(source.Width, source.Height, PixelFormat.Format32bppRgb);
+        scaled = new(size.Width, size.Height, PixelFormat.Format32bppRgb);
         captureGraphics = Graphics.FromImage(desktop);
         scaleGraphics = Graphics.FromImage(scaled);
         scaleGraphics.CompositingMode = CompositingMode.SourceCopy;
@@ -41,7 +42,7 @@ internal sealed class DesktopCapture : IDisposable
     public async Task<EncodedFrame?> CaptureH264Async(NativeEncoder encoder, long timestamp)
     {
         CaptureScaled();
-        var bits = scaled.LockBits(new Rectangle(0, 0, Size.Width, Size.Height), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+        var bits = scaled.LockBits(new Rectangle(0, 0, Size.Width, Size.Height), ImageLockMode.ReadOnly, PixelFormat.Format32bppRgb);
         try { return await encoder.EncodeAsync(bits.Scan0, bits.Stride, timestamp); }
         finally { scaled.UnlockBits(bits); }
     }

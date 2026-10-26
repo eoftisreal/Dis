@@ -48,7 +48,12 @@ public final class MainActivity extends Activity {
             fullscreen=!fullscreen; controls.setVisibility(fullscreen ? View.GONE : View.VISIBLE); full.setText(fullscreen ? R.string.controls : R.string.full_screen);
         }); bar.addView(full);
         Spinner orientation=new Spinner(this);
-        ArrayAdapter<CharSequence> orientationChoices=ArrayAdapter.createFromResource(this,R.array.orientation_options,android.R.layout.simple_spinner_dropdown_item);
+        ArrayAdapter<CharSequence> orientationChoices=new ArrayAdapter<CharSequence>(this,android.R.layout.simple_spinner_dropdown_item,getResources().getTextArray(R.array.orientation_options)) {
+            @Override public View getView(int position,View recycled,android.view.ViewGroup parent) {
+                TextView text=(TextView)super.getView(position,recycled,parent); text.setTextColor(Color.WHITE); return text;
+            }
+        };
+        orientation.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.LTGRAY));
         orientation.setAdapter(orientationChoices);
         orientation.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override public void onNothingSelected(AdapterView<?> parent) { }

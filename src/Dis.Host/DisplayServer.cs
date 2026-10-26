@@ -219,7 +219,11 @@ internal sealed class DisplayServer : IAsyncDisposable
                 {
                     EncodedFrame? frame = first ?? await capture.CaptureH264Async(encoder, timestamp);
                     first = null;
-                    if (frame is null) { await Task.Delay(2, life.Token); continue; }
+                    if (frame is null)
+                    {
+                        var wait = TimeSpan.FromSeconds(1.0 / fps) - Stopwatch.GetElapsedTime(start);
+                        await Task.Delay(wait > TimeSpan.Zero ? wait : TimeSpan.FromMilliseconds(2), life.Token); continue;
+                    }
                     data = frame.Data; timestamp = frame.TimestampUs;
                 }
                 else data = capture.Capture();
