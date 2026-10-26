@@ -3,6 +3,7 @@ using System.IO.Compression;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Security.Principal;
+using System.Security.AccessControl;
 
 namespace Dis.Host;
 
@@ -41,8 +42,7 @@ internal static class DriverSetup
         if (!Convert.ToHexString(SHA256.HashData(zip)).Equals(Hash, StringComparison.OrdinalIgnoreCase))
             throw new IOException("Driver package checksum mismatch. No driver was installed.");
         string root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Dis", "Drivers", "25.7.23");
-        Directory.CreateDirectory(root);
-        if ((File.GetAttributes(root) & FileAttributes.ReparsePoint) != 0) throw new IOException("Driver folder must not be a link.");
+        ProtectDriverFolder(root);
         using (var archive = new ZipArchive(new MemoryStream(zip)))
         {
             foreach (string name in new[] { "MttVDD.inf", "MttVDD.dll", "mttvdd.cat", "vdd_settings.xml" })
@@ -51,7 +51,8 @@ internal static class DriverSetup
                 string destination = Path.Combine(root, name);
                 if (File.Exists(destination) && (File.GetAttributes(destination) & FileAttributes.ReparsePoint) != 0)
                     throw new IOException("Driver files must not be links.");
-                using var source = entry.Open(); using var target = new FileStream(destination, FileMode.Create, FileAccess.Write, FileShare.None);
+                if (File.Exists(destination)) File.Delete(destination);
+                using var source = entry.Open(); using var target = new FileStream(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None);
                 await source.CopyToAsync(target);
             }
         }
@@ -64,6 +65,25 @@ internal static class DriverSetup
         progress("Installing the second-monitor device. Accept the Windows publisher prompt if shown…");
         await Task.Run(() => RegisterDevice(Path.Combine(root, "MttVDD.inf")));
         progress("Driver installed. Return to Dis and choose Second display.");
+    }
+
+    private static void ProtectDriverFolder(string root)
+    {
+        string basePath = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
+        string relative = Path.GetRelativePath(basePath, root);
+        foreach (string segment in relative.Split(Path.DirectorySeparatorChar))
+        {
+            basePath = Path.Combine(basePath, segment);
+            Directory.CreateDirectory(basePath);
+            if ((File.GetAttributes(basePath) & FileAttributes.ReparsePoint) != 0) throw new IOException("Driver folder must not be a link.");
+            var admin = new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null);
+            var security = new DirectorySecurity(); security.SetAccessRuleProtection(true, false); security.SetOwner(admin);
+            var inherit = InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit;
+            security.AddAccessRule(new(admin, FileSystemRights.FullControl, inherit, PropagationFlags.None, AccessControlType.Allow));
+            security.AddAccessRule(new(new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null), FileSystemRights.FullControl, inherit, PropagationFlags.None, AccessControlType.Allow));
+            security.AddAccessRule(new(new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null), FileSystemRights.ReadAndExecute, inherit, PropagationFlags.None, AccessControlType.Allow));
+            new DirectoryInfo(basePath).SetAccessControl(security);
+        }
     }
 
     private static void RegisterDevice(string inf)

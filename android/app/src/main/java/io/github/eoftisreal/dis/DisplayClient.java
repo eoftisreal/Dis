@@ -95,7 +95,11 @@ public final class DisplayClient implements AutoCloseable, DisplayView.InputSink
                     try {
                         decoder=new H264Decoder(view,width,height,config.getInt("fps"),csd.payload,
                             sequence -> write(output,new Wire.Packet(Wire.ACK,sequence,new byte[0])),
-                            error -> { forceJpeg=true; closeTransport(); });
+                            error -> {
+                                if (!surfaceReset.get() && view.getHolder().getSurface().isValid()) forceJpeg=true;
+                                else surfaceReset.set(true);
+                                closeTransport();
+                            });
                     } catch (IOException e) { forceJpeg=true; throw e; }
                     view.setSurfaceInvalidated(() -> { surfaceReset.set(true); closeTransport(); });
                 }

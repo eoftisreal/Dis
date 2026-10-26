@@ -43,7 +43,7 @@ internal sealed class DesktopCapture : IDisposable
     {
         CaptureScaled();
         var bits = scaled.LockBits(new Rectangle(0, 0, Size.Width, Size.Height), ImageLockMode.ReadOnly, PixelFormat.Format32bppRgb);
-        try { return await encoder.EncodeAsync(bits.Scan0, bits.Stride, timestamp); }
+        try { return await encoder.EncodeAsync(bits.Scan0, bits.Stride, timestamp).ConfigureAwait(false); }
         finally { scaled.UnlockBits(bits); }
     }
 

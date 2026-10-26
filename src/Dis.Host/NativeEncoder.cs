@@ -25,7 +25,7 @@ internal sealed class NativeEncoder : IDisposable
     public static async Task<NativeEncoder> CreateAsync(int width, int height, int fps, int bitrate, bool preferHardware)
     {
         var encoder = new NativeEncoder(width, height, fps, bitrate, preferHardware);
-        try { await encoder.ready.Task.WaitAsync(TimeSpan.FromSeconds(8)); return encoder; }
+        try { await encoder.ready.Task.WaitAsync(TimeSpan.FromSeconds(8)).ConfigureAwait(false); return encoder; }
         catch { encoder.Dispose(); throw; }
     }
     public Task<EncodedFrame?> EncodeAsync(nint data, int stride, long pts)

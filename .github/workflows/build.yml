@@ -62,6 +62,8 @@ jobs:
             $process = Start-Process artifacts/windows/Dis.exe -ArgumentList '--display-smoke' -Wait -PassThru
             Get-Content artifacts/display-smoke.json
             if ($process.ExitCode -ne 0) { throw 'Virtual display or orientation smoke test failed' }
+            python tools/verify_h264.py artifacts/capture-smoke.h264
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           } finally { $store.Remove($publisher); $store.Close() }
       - uses: actions/upload-artifact@v4
         with:

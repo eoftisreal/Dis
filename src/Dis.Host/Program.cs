@@ -9,7 +9,7 @@ internal static class Program
         if (args.Contains("--display-smoke"))
         {
             string output = Path.GetFullPath("artifacts/display-smoke.json");
-            try { DisplaySmoke.RunAsync(output).GetAwaiter().GetResult(); Environment.ExitCode = 0; }
+            try { Task.Run(() => DisplaySmoke.RunAsync(output)).GetAwaiter().GetResult(); Environment.ExitCode = 0; }
             catch (Exception e) { File.WriteAllText(output, e.ToString()); Environment.ExitCode = 1; }
             return;
         }

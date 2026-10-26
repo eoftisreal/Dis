@@ -178,7 +178,7 @@ internal sealed class MainForm : Form
         try {
             string executable = Environment.ProcessPath ?? throw new IOException("Cannot locate Dis.exe.");
             var info = new ProcessStartInfo(executable) { UseShellExecute = true, Verb = "runas", WorkingDirectory = AppContext.BaseDirectory };
-            if (Path.GetFileNameWithoutExtension(executable).Equals("dotnet", StringComparison.OrdinalIgnoreCase)) info.ArgumentList.Add(typeof(MainForm).Assembly.Location);
+            if (Path.GetFileNameWithoutExtension(executable).Equals("dotnet", StringComparison.OrdinalIgnoreCase)) info.ArgumentList.Add(Path.Combine(AppContext.BaseDirectory, "Dis.dll"));
             info.ArgumentList.Add("--install-display-driver");
             using var helper = Process.Start(info) ?? throw new IOException("Cannot open driver setup.");
             await helper.WaitForExitAsync(); RefreshDisplays();
