@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.ComponentModel;
+using Dis.Core;
 
 namespace Dis.Host;
 
@@ -6,6 +8,7 @@ internal sealed class AdbBridge(string executable, string serial, int port, bool
 {
     public static async Task<AdbBridge> ConnectAsync(string executable, string requestedSerial, int port)
     {
+        executable = AdbLocator.Resolve(executable);
         string serial = requestedSerial.Trim();
         if (serial.Length == 0)
         {
@@ -35,7 +38,7 @@ internal sealed class AdbBridge(string executable, string serial, int port, bool
         var start = new ProcessStartInfo(executable) { UseShellExecute = false, CreateNoWindow = true,
             RedirectStandardOutput = true, RedirectStandardError = true };
         foreach (string arg in args) start.ArgumentList.Add(arg);
-        using var process = Process.Start(start) ?? throw new IOException("Cannot start adb.exe.");
+        using var process = StartProcess(start);
         Task<string> stdout = process.StandardOutput.ReadToEndAsync();
         Task<string> stderr = process.StandardError.ReadToEndAsync();
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -48,8 +51,23 @@ internal sealed class AdbBridge(string executable, string serial, int port, bool
         }
         string output = await stdout;
         string error = await stderr;
-        if (process.ExitCode != 0) throw new IOException($"ADB: {error.Trim()}");
+        if (process.ExitCode != 0)
+        {
+            string detail = string.IsNullOrWhiteSpace(error) ? output.Trim() : error.Trim();
+            if (detail.Length == 0) detail = $"exit code 0x{process.ExitCode:X8}. Keep the entire platform-tools folder, including its DLLs, together.";
+            throw new IOException($"ADB: {detail}");
+        }
         return output;
+    }
+
+    private static Process StartProcess(ProcessStartInfo start)
+    {
+        try { return Process.Start(start) ?? throw new IOException("Cannot start adb.exe."); }
+        catch (Win32Exception e)
+        {
+            throw new IOException("ADB could not be started. Use Browse to select adb.exe and keep the complete " +
+                $"Android Platform Tools folder together. Windows reported: {e.Message}", e);
+        }
     }
 
     public async ValueTask DisposeAsync()

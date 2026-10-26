@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
+using Dis.Core;
 
 namespace Dis.Host;
 
@@ -23,6 +24,8 @@ internal sealed class MainForm : Form
     private readonly NumericUpDown quality = new() { Minimum = 40, Maximum = 95, Value = 85, Dock = DockStyle.Fill };
     private readonly CheckBox remoteInput = new() { Text = "Allow touch and pen", Checked = true, AutoSize = true };
     private readonly TextBox adb = new() { Text = "adb.exe", Dock = DockStyle.Fill };
+    private readonly Button browseAdb = new() { Text = "Browse…", AutoSize = true };
+    private readonly LinkLabel downloadAdb = new() { Text = "Download Android Platform Tools", AutoSize = true };
     private readonly TextBox serial = new() { PlaceholderText = "Automatic for one connected device", Dock = DockStyle.Fill };
     private readonly TextBox pairing = new() { ReadOnly = true, Multiline = true, Dock = DockStyle.Fill, Height = 76, ScrollBars = ScrollBars.Vertical };
     private readonly Label status = new() { Text = "Ready", Dock = DockStyle.Fill, AutoSize = true };
@@ -52,7 +55,12 @@ internal sealed class MainForm : Form
         Add("Port", port);
         Add("Frames per second", fps);
         Add("JPEG quality", quality);
-        Add("ADB executable", adb);
+        var adbPicker = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 2, RowCount = 2 };
+        adbPicker.ColumnStyles.Add(new(SizeType.Percent, 100));
+        adbPicker.ColumnStyles.Add(new(SizeType.AutoSize));
+        adbPicker.Controls.Add(adb, 0, 0); adbPicker.Controls.Add(browseAdb, 1, 0);
+        adbPicker.Controls.Add(downloadAdb, 0, 1); adbPicker.SetColumnSpan(downloadAdb, 2);
+        Add("ADB executable", adbPicker);
         Add("Device serial", serial);
         Add("Input", remoteInput);
         var buttons = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill };
@@ -71,7 +79,14 @@ internal sealed class MainForm : Form
         refresh.Click += (_, _) => RefreshDisplays();
         windowsSettings.Click += (_, _) => Process.Start(new ProcessStartInfo("ms-settings:display") { UseShellExecute = true });
         virtualButton.Click += async (_, _) => await ToggleVirtualAsync();
-        settings.AddRange([connection, display, port, fps, quality, remoteInput, adb, serial, refresh, virtualButton]);
+        browseAdb.Click += (_, _) => BrowseAdb();
+        downloadAdb.LinkClicked += (_, _) =>
+        {
+            try { Process.Start(new ProcessStartInfo("https://developer.android.com/tools/releases/platform-tools") { UseShellExecute = true }); }
+            catch (System.ComponentModel.Win32Exception e) { status.Text = $"Open developer.android.com/tools/releases/platform-tools in your browser. {e.Message}"; }
+        };
+        adb.Text = AdbLocator.Find(null) ?? "adb.exe";
+        settings.AddRange([connection, display, port, fps, quality, remoteInput, adb, browseAdb, serial, refresh, virtualButton]);
         connection.Items.Add(new Connection("USB cable (ADB) · keeps networking available", IPAddress.Loopback));
         foreach (var adapter in NetworkInterface.GetAllNetworkInterfaces().Where(n => n.OperationalStatus == OperationalStatus.Up))
         foreach (var address in adapter.GetIPProperties().UnicastAddresses)
@@ -89,6 +104,18 @@ internal sealed class MainForm : Form
             control.Margin = new(0, 6, 0, 6);
             root.Controls.Add(control, 1, row);
         }
+    }
+
+    private void BrowseAdb()
+    {
+        using var picker = new OpenFileDialog
+        {
+            Title = "Select adb.exe from Android Platform Tools", Filter = "Android Debug Bridge (adb.exe)|adb.exe",
+            CheckFileExists = true, FileName = "adb.exe"
+        };
+        string? current = AdbLocator.Find(adb.Text);
+        if (current is not null) picker.InitialDirectory = Path.GetDirectoryName(current);
+        if (picker.ShowDialog(this) == DialogResult.OK) adb.Text = picker.FileName;
     }
 
     private void RefreshDisplays()
@@ -111,7 +138,10 @@ internal sealed class MainForm : Form
             foreach (var setting in settings) setting.Enabled = false;
             status.Text = "Starting…";
             if (selected.Address.Equals(IPAddress.Loopback))
-                tunnel = await AdbBridge.ConnectAsync(adb.Text.Trim(), serial.Text, (int)port.Value);
+            {
+                adb.Text = AdbLocator.Resolve(adb.Text);
+                tunnel = await AdbBridge.ConnectAsync(adb.Text, serial.Text, (int)port.Value);
+            }
             server = new(new(selected.Address, (int)port.Value, screen.Name, screen.Bounds, 1920, 1080,
                 (int)fps.Value, (int)quality.Value, remoteInput.Checked));
             server.Status += UpdateStatus;

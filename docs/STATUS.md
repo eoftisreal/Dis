@@ -6,7 +6,7 @@
 | --- | --- |
 | Windows app | WinForms UI; display/adapter selection; GDI capture; aspect-preserving scaling; JPEG; cursor; frame-rate/quality controls; throughput/FPS statistics |
 | Android app | Surface rendering; bounded frame decode; finger-to-mouse and pen pressure/tilt transport; bounded reconnect; lifecycle disconnect |
-| Network/USB | Adapter-specific TCP listener or loopback ADB reverse; existing tunnel conflicts rejected; Dis-owned mapping cleanup; no route/DNS/USB accessory changes |
+| Network/USB | Adapter-specific TCP listener or loopback ADB reverse; automatic ADB discovery and Browse picker; existing tunnel conflicts rejected; Dis-owned mapping cleanup; no route/DNS/USB accessory changes |
 | Security | TLS 1.2/1.3; SHA-256 server certificate pin; random 256-bit session token; handshake/message/rate/queue limits; link revocation when host stops |
 | Framing | Versioned protocol; big-endian fields; exact reads; strict validation; one unconsumed frame; whole-frame send/ack deadline; input release on teardown |
 | Virtual monitor | Microsoft sample adapted to one EDID-less panel, stable identity and portrait/landscape modes; host software-device lifecycle; source-only, not installed or tested |
@@ -16,7 +16,7 @@
 
 - Windows host Release compilation: **passed, zero warnings and errors**.
 - Self-contained Windows x64 executable publication: **passed**. The executable has not been launched on Windows in this environment.
-- C# executable test suite: **11 checks passed**, including fragmented/truncated reads, invalid lengths/flags, pointer validation, ack behavior, token checks, and framed TLS loopback traffic.
+- C# executable test suite: protocol/security checks plus ADB path-resolution regression coverage. Windows CI additionally starts the installed SDK's real `adb.exe version` from an unrelated directory to check the reported launch failure.
 - Independent Java suite: **40 checks passed**, using the same framing/pointer vectors, rejecting malformed connection links, and checking the real certificate-pinning implementation against correct, unrelated, empty, and missing certificates. The committed certificate is public test data; its private key is not included.
 - Android debug APK build (`assembleDebug`) and Android lint (`lintDebug`): **passed** with Android SDK 35, AGP 8.7.3, Gradle 8.9 and JDK 17. This verifies compilation/packaging and lint, not physical-device behavior.
 - Native driver compilation/signing and real Windows/Android display/input/network testing: **not performed**.

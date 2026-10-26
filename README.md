@@ -53,6 +53,14 @@ For USB tethering without ADB, leave tethering enabled, select its Windows adapt
 
 If Windows Firewall blocks network mode, allow Dis on the intended private network. The app does not create broad firewall rules. ADB mode listens only on loopback. Remote input targets ordinary desktop applications; Windows can block injection into elevated applications or the secure desktop.
 
+### If Windows cannot find `adb.exe`
+
+Download **SDK Platform-Tools for Windows** from [Google's official page](https://developer.android.com/tools/releases/platform-tools). Extract the **entire** `platform-tools` folder beside `Dis.exe`, including its DLLs. Dis now looks there automatically, also checks Android Studio's usual SDK location, `ANDROID_HOME`, `ANDROID_SDK_ROOT`, and PATH, and offers **Browse…** to select `adb.exe` explicitly.
+
+In an older Dis build, enter the full executable path in **ADB executable**, for example `C:\Android\platform-tools\adb.exe`. Installing Android Studio or changing PATH is not required. USB debugging must still be enabled and the PC authorized on the phone after ADB starts.
+
+For Ethernet, Wi-Fi, or a USB-tethering network connection, select that network adapter instead of **USB cable (ADB)**; those modes do not launch ADB.
+
 ## Project records
 
 - [Current progress and verification](docs/STATUS.md)

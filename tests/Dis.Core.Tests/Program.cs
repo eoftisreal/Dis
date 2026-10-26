@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
@@ -112,7 +113,79 @@ await Check("TLS loopback transports real framed messages with a pinned certific
     Packet packet = await Wire.ReadAsync(serverTls, timeout.Token);
     Require(packet.Sequence == 1 && packet.Payload.SequenceEqual("abc"u8.ToArray()));
 });
-Console.WriteLine($"{passed} protocol and security checks passed.");
+await Check("portable ADB discovery is independent of the working directory", () =>
+{
+    using var files = new AdbTestDirectory();
+    string expected = files.Create("app", "platform-tools", "adb.exe");
+    files.Create("working", "adb.exe");
+    Require(AdbLocator.Find("adb.exe", files.Locations) == expected);
+    return Task.CompletedTask;
+});
+await Check("explicit quoted, relative, and folder ADB selections", () =>
+{
+    using var files = new AdbTestDirectory();
+    string selected = files.Create("Android SDK", "platform-tools", "adb.exe");
+    files.Create("app", "adb.exe");
+    Require(AdbLocator.Find($"\"{selected}\"", files.Locations) == selected);
+    Require(AdbLocator.Find(Path.GetDirectoryName(selected), files.Locations) == selected);
+    string relative = files.Create("app", "my-tools", "adb.exe");
+    Require(AdbLocator.Find(Path.Combine("my-tools", "adb.exe"), files.Locations) == relative);
+    return Task.CompletedTask;
+});
+await Check("SDK, Android Studio, and PATH ADB fallback order", () =>
+{
+    using var files = new AdbTestDirectory();
+    string sdkHome = files.Create("home-sdk", "platform-tools", "adb.exe");
+    string sdkRoot = files.Create("root-sdk", "platform-tools", "adb.exe");
+    string studio = files.Create("local", "Android", "Sdk", "platform-tools", "adb.exe");
+    string onPath = files.Create("path-tools", "adb.exe");
+    var locations = files.Locations with
+    {
+        AndroidHome = Path.GetDirectoryName(Path.GetDirectoryName(sdkHome)),
+        AndroidSdkRoot = Path.GetDirectoryName(Path.GetDirectoryName(sdkRoot)),
+        SearchPath = $"\"{Path.GetDirectoryName(onPath)}\""
+    };
+    Require(AdbLocator.Find(null, locations) == sdkHome); File.Delete(sdkHome);
+    Require(AdbLocator.Find(null, locations) == sdkRoot); File.Delete(sdkRoot);
+    Require(AdbLocator.Find(null, locations) == studio); File.Delete(studio);
+    Require(AdbLocator.Find(null, locations) == onPath);
+    return Task.CompletedTask;
+});
+await Check("missing explicit ADB does not silently switch installations", async () =>
+{
+    using var files = new AdbTestDirectory();
+    string fallback = files.Create("app", "platform-tools", "adb.exe");
+    string missing = Path.Combine(files.Locations.WorkingDirectory, "missing", "adb.exe");
+    Require(AdbLocator.Find(missing, files.Locations) is null);
+    await Throws<IOException>(() => { AdbLocator.Resolve(missing, files.Locations); return Task.CompletedTask; });
+    File.Delete(fallback);
+    Require(AdbLocator.Find(null, files.Locations with { AndroidHome = "\0invalid" }) is null);
+    await Throws<IOException>(() => { AdbLocator.Resolve(null, files.Locations); return Task.CompletedTask; });
+});
+if (args.Contains("--check-installed-adb"))
+{
+    await Check("installed Windows ADB launches from an unrelated working directory", async () =>
+    {
+        Require(OperatingSystem.IsWindows());
+        using var files = new AdbTestDirectory();
+        string executable = AdbLocator.Resolve(null);
+        var info = new ProcessStartInfo(executable)
+        {
+            UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = files.Locations.WorkingDirectory,
+            RedirectStandardOutput = true, RedirectStandardError = true
+        };
+        info.ArgumentList.Add("version"); // No server restart, USB operation, device command, or tunnel mutation.
+        using var process = Process.Start(info) ?? throw new IOException("ADB process did not start.");
+        Task<string> output = process.StandardOutput.ReadToEndAsync();
+        Task<string> error = process.StandardError.ReadToEndAsync();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        try { await process.WaitForExitAsync(timeout.Token); }
+        catch (OperationCanceledException) { process.Kill(true); throw; }
+        Require(process.ExitCode == 0 && (await output).Contains("Android Debug Bridge", StringComparison.Ordinal));
+        await error;
+    });
+}
+Console.WriteLine($"{passed} protocol, security, and ADB checks passed.");
 
 async Task Check(string name, Func<Task> test) { await test(); passed++; Console.WriteLine($"PASS {name}"); }
 static void Require(bool condition) { if (!condition) throw new Exception("Assertion failed"); }
@@ -125,4 +198,25 @@ static async Task Throws<T>(Func<Task> action) where T : Exception
 sealed class FragmentedStream(byte[] bytes) : MemoryStream(bytes)
 {
     public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken ct = default) => base.ReadAsync(buffer[..Math.Min(1, buffer.Length)], ct);
+}
+
+sealed class AdbTestDirectory : IDisposable
+{
+    private readonly string root = Path.Combine(Path.GetTempPath(), $"Dis-adb-test-{Guid.NewGuid():N}");
+    public AdbSearchLocations Locations { get; }
+    public AdbTestDirectory()
+    {
+        Locations = new(Path.Combine(root, "app"), Path.Combine(root, "working"), Path.Combine(root, "local"), null, null, null);
+        Directory.CreateDirectory(Locations.AppDirectory);
+        Directory.CreateDirectory(Locations.WorkingDirectory);
+        Directory.CreateDirectory(Locations.LocalAppData);
+    }
+    public string Create(params string[] parts)
+    {
+        string path = Path.Combine([root, .. parts]);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, "Path-resolution fixture; never executed.");
+        return path;
+    }
+    public void Dispose() => Directory.Delete(root, true);
 }
