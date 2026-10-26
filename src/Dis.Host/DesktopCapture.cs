@@ -14,6 +14,9 @@ internal sealed class DesktopCapture : IDisposable
     private readonly Graphics scaleGraphics;
     private readonly ImageCodecInfo jpeg = ImageCodecInfo.GetImageEncoders().Single(c => c.FormatID == ImageFormat.Jpeg.Guid);
     private readonly EncoderParameters parameters = new(1);
+    private CompositorCapture? compositor;
+    private bool hasCompositorFrame;
+    public string Backend => compositor is null ? "GDI" : "WGC";
     public FrameSize Size { get; }
 
     public DesktopCapture(Rectangle source, FrameSize size, int quality)
@@ -28,6 +31,8 @@ internal sealed class DesktopCapture : IDisposable
         scaleGraphics.CompositingMode = CompositingMode.SourceCopy;
         scaleGraphics.InterpolationMode = InterpolationMode.HighQualityBilinear;
         parameters.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, (long)quality);
+        try { compositor = new(source); }
+        catch (Exception e) when (e is DllNotFoundException or EntryPointNotFoundException or System.Runtime.InteropServices.COMException or IOException or TimeoutException) { }
     }
 
     public byte[] Capture()
@@ -49,8 +54,19 @@ internal sealed class DesktopCapture : IDisposable
 
     private void CaptureScaled()
     {
-        captureGraphics.CopyFromScreen(source.Location, Point.Empty, source.Size, CopyPixelOperation.SourceCopy);
-        DrawCursor();
+        if (compositor is not null)
+        {
+            var bits = desktop.LockBits(new Rectangle(Point.Empty, source.Size), ImageLockMode.ReadWrite, PixelFormat.Format32bppRgb);
+            try { if (compositor.Copy(bits.Scan0, bits.Stride, source.Width, source.Height)) hasCompositorFrame = true; }
+            catch (Exception e) when (e is System.Runtime.InteropServices.COMException or IOException)
+            { compositor.Dispose(); compositor = null; hasCompositorFrame = false; }
+            finally { desktop.UnlockBits(bits); }
+        }
+        if (!hasCompositorFrame)
+        {
+            captureGraphics.CopyFromScreen(source.Location, Point.Empty, source.Size, CopyPixelOperation.SourceCopy);
+            DrawCursor();
+        }
         scaleGraphics.DrawImage(desktop, new Rectangle(0, 0, Size.Width, Size.Height));
     }
 
@@ -76,6 +92,7 @@ internal sealed class DesktopCapture : IDisposable
     public void Dispose()
     {
         parameters.Dispose();
+        compositor?.Dispose();
         scaleGraphics.Dispose();
         captureGraphics.Dispose();
         scaled.Dispose();
