@@ -15,7 +15,7 @@ Choose **Mirror selected screen** to stream an existing monitor without installi
 
 ## Smoothness and orientation
 
-The default path is H.264: Windows Media Foundation selects a usable hardware encoder when available, with a software encoder fallback. Android MediaCodec renders directly to a Surface. A two-frame window replaces the old stop-and-wait transport. Buffers remain bounded; encoded reference frames are never silently dropped. The live status shows the encoder actually used, delivered frame rate, and throughput.
+Windows Graphics Capture reads the selected monitor through D3D11, including the virtual monitor; GDI remains a capture fallback. The default video path is H.264: Windows Media Foundation selects a usable hardware encoder when available, with a software encoder fallback. Android MediaCodec renders directly to a Surface. A two-frame window replaces the old stop-and-wait transport. Buffers remain bounded; encoded reference frames are never silently dropped. The live status shows the encoder actually used, sent frame rate, and throughput.
 
 Start with **720p · smooth** and a 60 fps target. Use **1080p · detailed** after checking performance. If H.264 cannot initialize, the app reports **JPEG fallback**. A target frame rate is not a measured guarantee on a particular PC/phone.
 
