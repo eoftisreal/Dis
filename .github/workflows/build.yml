@@ -1,0 +1,58 @@
+name: Build and verify
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Protocol and security tests
+        run: dotnet run --project tests/Dis.Core.Tests -c Release
+      - name: Build Windows app
+        run: dotnet publish src/Dis.Host/Dis.Host.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o artifacts/windows
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Dis-Windows-x64-preview
+          path: artifacts/windows/
+          if-no-files-found: error
+  android:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Cross-language protocol checks
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifacts/java-tests | Out-Null
+          javac -d artifacts/java-tests android/app/src/main/java/io/github/eoftisreal/dis/Wire.java android/app/src/main/java/io/github/eoftisreal/dis/ConnectionSpec.java android/app/src/main/java/io/github/eoftisreal/dis/CertificatePin.java tests/java/WireTest.java
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          java -cp artifacts/java-tests io.github.eoftisreal.dis.WireTest
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Install Android SDK platform
+        shell: pwsh
+        run: |
+          & "$env:ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager.bat" 'platforms;android-35' 'build-tools;35.0.0'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build and lint Android
+        run: gradle -p android assembleDebug lintDebug --console=plain --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Dis-Android-preview
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error

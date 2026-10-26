@@ -1,0 +1,392 @@
+{
+  "filename": "SuperDisplay_Installer_v1.1.10.exe",
+  "bytes": 29446384,
+  "sha256": "bd7b2d30b633986f5eabfd4e1bb561e7cf7e79ee7be5db03bee270c79298d252",
+  "machine": "0x14c",
+  "pe_magic": "0x10b",
+  "versions": {
+    "CompanyName": "Software by KeloCube",
+    "FileDescription": "SuperDisplay Installer",
+    "FileVersion": "1.1.10",
+    "InternalName": "SuperDisplay_Installer_v1.1.10",
+    "LegalCopyright": "Copyright (C) 2020 Software by KeloCube",
+    "OriginalFileName": "SuperDisplay_Installer_v1.1.10.exe",
+    "ProductName": "SuperDisplay",
+    "ProductVersion": "1.1.10"
+  },
+  "sections": [
+    {
+      "name": ".text",
+      "file_offset": 1024,
+      "raw_size": 1515008,
+      "virtual_size": 1514815
+    },
+    {
+      "name": ".rdata",
+      "file_offset": 1516032,
+      "raw_size": 383488,
+      "virtual_size": 383100
+    },
+    {
+      "name": ".data",
+      "file_offset": 1899520,
+      "raw_size": 21504,
+      "virtual_size": 27888
+    },
+    {
+      "name": ".rsrc",
+      "file_offset": 1921024,
+      "raw_size": 80384,
+      "virtual_size": 79936
+    },
+    {
+      "name": ".reloc",
+      "file_offset": 2001408,
+      "raw_size": 104448,
+      "virtual_size": 104036
+    }
+  ],
+  "top_level_imports": [
+    "KERNEL32.dll"
+  ],
+  "overlay_offset": 2105856,
+  "certificate_table": {
+    "offset": 29437472,
+    "bytes": 8912,
+    "signature_verified": false
+  },
+  "embedded_name_evidence": [
+    {
+      "name": "MirrorService.exe",
+      "occurrences": [
+        {
+          "offset": 4227147,
+          "encoding": "ascii"
+        },
+        {
+          "offset": 6182867,
+          "encoding": "ascii"
+        }
+      ]
+    },
+    {
+      "name": "MirrorSettings.exe",
+      "occurrences": [
+        {
+          "offset": 4227164,
+          "encoding": "ascii"
+        },
+        {
+          "offset": 6182828,
+          "encoding": "ascii"
+        },
+        {
+          "offset": 6183502,
+          "encoding": "ascii"
+        },
+        {
+          "offset": 6183540,
+          "encoding": "ascii"
+        },
+        {
+          "offset": 6187326,
+          "encoding": "ascii"
+        }
+      ]
+    },
+    {
+      "name": "driver_installer.exe",
+      "occurrences": [
+        {
+          "offset": 4227492,
+          "encoding": "ascii"
+        },
+        {
+          "offset": 6119453,
+          "encoding": "ascii"
+        },
+        {
+          "offset": 6120355,
+          "encoding": "ascii"
+        },
+        {
+          "offset": 6183988,
+          "encoding": "ascii"
+        },
+        {
+          "offset": 6268798,
+          "encoding": "ascii"
+        }
+      ]
+    },
+    {
+      "name": "superdisplay_display.dll",
+      "occurrences": [
+        {
+          "offset": 4227557,
+          "encoding": "ascii"
+        },
+        {
+          "offset": 6183578,
+          "encoding": "ascii"
+        },
+        {
+          "offset": 6268952,
+          "encoding": "ascii"
+        }
+      ]
+    },
+    {
+      "name": "superdisplay_hid.dll",
+      "occurrences": [
+        {
+          "offset": 4227601,
+          "encoding": "ascii"
+        },
+        {
+          "offset": 6184180,
+          "encoding": "ascii"
+        },
+        {
+          "offset": 6269071,
+          "encoding": "ascii"
+        }
+      ]
+    },
+    {
+      "name": "superdisplay_aoap.cat",
+      "occurrences": [
+        {
+          "offset": 4227512,
+          "encoding": "ascii"
+        },
+        {
+          "offset": 6184021,
+          "encoding": "ascii"
+        },
+        {
+          "offset": 6268835,
+          "encoding": "ascii"
+        }
+      ]
+    },
+    {
+      "name": "superdisplay_display.cat",
+      "occurrences": [
+        {
+          "offset": 4227533,
+          "encoding": "ascii"
+        },
+        {
+          "offset": 6184110,
+          "encoding": "ascii"
+        },
+        {
+          "offset": 6268911,
+          "encoding": "ascii"
+        }
+      ]
+    },
+    {
+      "name": "superdisplay_hid.cat",
+      "occurrences": [
+        {
+          "offset": 4227581,
+          "encoding": "ascii"
+        },
+        {
+          "offset": 6184147,
+          "encoding": "ascii"
+        },
+        {
+          "offset": 6269034,
+          "encoding": "ascii"
+        }
+      ]
+    },
+    {
+      "name": "superdisplay_hidbus.cat",
+      "occurrences": [
+        {
+          "offset": 4227621,
+          "encoding": "ascii"
+        },
+        {
+          "offset": 6182597,
+          "encoding": "ascii"
+        },
+        {
+          "offset": 6269145,
+          "encoding": "ascii"
+        }
+      ]
+    },
+    {
+      "name": "superdisplay_wpdfilter.cat",
+      "occurrences": [
+        {
+          "offset": 4227644,
+          "encoding": "ascii"
+        },
+        {
+          "offset": 6184384,
+          "encoding": "ascii"
+        },
+        {
+          "offset": 6269265,
+          "encoding": "ascii"
+        }
+      ]
+    },
+    {
+      "name": "Wintab32.dll",
+      "occurrences": [
+        {
+          "offset": 4227670,
+          "encoding": "ascii"
+        },
+        {
+          "offset": 4227682,
+          "encoding": "ascii"
+        },
+        {
+          "offset": 6269394,
+          "encoding": "ascii"
+        },
+        {
+          "offset": 6269423,
+          "encoding": "ascii"
+        }
+      ]
+    },
+    {
+      "name": "adb.exe",
+      "occurrences": [
+        {
+          "offset": 4227696,
+          "encoding": "ascii"
+        },
+        {
+          "offset": 6269454,
+          "encoding": "ascii"
+        }
+      ]
+    },
+    {
+      "name": "AdbWinApi.dll",
+      "occurrences": [
+        {
+          "offset": 4227059,
+          "encoding": "ascii"
+        },
+        {
+          "offset": 6182672,
+          "encoding": "ascii"
+        }
+      ]
+    },
+    {
+      "name": "AdbWinUsbApi.dll",
+      "occurrences": [
+        {
+          "offset": 4227072,
+          "encoding": "ascii"
+        },
+        {
+          "offset": 6182728,
+          "encoding": "ascii"
+        }
+      ]
+    },
+    {
+      "name": "Sentry.dll",
+      "occurrences": [
+        {
+          "offset": 4227201,
+          "encoding": "ascii"
+        }
+      ]
+    },
+    {
+      "name": "sentry_native.dll",
+      "occurrences": [
+        {
+          "offset": 4227261,
+          "encoding": "ascii"
+        },
+        {
+          "offset": 6183442,
+          "encoding": "ascii"
+        },
+        {
+          "offset": 6268463,
+          "encoding": "ascii"
+        }
+      ]
+    },
+    {
+      "name": "crashpad_handler.exe",
+      "occurrences": [
+        {
+          "offset": 4227119,
+          "encoding": "ascii"
+        },
+        {
+          "offset": 6182897,
+          "encoding": "ascii"
+        }
+      ]
+    },
+    {
+      "name": "Newtonsoft.Json.dll",
+      "occurrences": [
+        {
+          "offset": 4227182,
+          "encoding": "ascii"
+        },
+        {
+          "offset": 6183472,
+          "encoding": "ascii"
+        }
+      ]
+    },
+    {
+      "name": "xaudio2_9redist.dll",
+      "occurrences": [
+        {
+          "offset": 4227442,
+          "encoding": "ascii"
+        },
+        {
+          "offset": 6182633,
+          "encoding": "ascii"
+        },
+        {
+          "offset": 6268762,
+          "encoding": "ascii"
+        }
+      ]
+    },
+    {
+      "name": "updater.exe",
+      "occurrences": [
+        {
+          "offset": 4227048,
+          "encoding": "ascii"
+        },
+        {
+          "offset": 6185120,
+          "encoding": "ascii"
+        },
+        {
+          "offset": 6185143,
+          "encoding": "ascii"
+        }
+      ]
+    }
+  ],
+  "limits": [
+    "Embedded names establish occurrences in installer data, not runtime execution or a verified installed-file inventory.",
+    "No Windows execution, APK analysis, traffic capture, encoder identification, signature trust verification, or complete disassembly was performed."
+  ]
+}
