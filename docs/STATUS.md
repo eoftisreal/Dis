@@ -15,6 +15,7 @@
 ## Verification
 
 - Windows host Release compilation: **passed, zero warnings and errors**.
+- Self-contained Windows x64 executable publication: **passed**. The executable has not been launched on Windows in this environment.
 - C# executable test suite: **11 checks passed**, including fragmented/truncated reads, invalid lengths/flags, pointer validation, ack behavior, token checks, and framed TLS loopback traffic.
 - Independent Java suite: **40 checks passed**, using the same framing/pointer vectors, rejecting malformed connection links, and checking the real certificate-pinning implementation against correct, unrelated, empty, and missing certificates. The committed certificate is public test data; its private key is not included.
 - Android debug APK build (`assembleDebug`) and Android lint (`lintDebug`): **passed** with Android SDK 35, AGP 8.7.3, Gradle 8.9 and JDK 17. This verifies compilation/packaging and lint, not physical-device behavior.

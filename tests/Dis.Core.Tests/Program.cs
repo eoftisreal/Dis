@@ -95,9 +95,8 @@ await Check("pairing token rejects malformed and unrelated secrets", () =>
 });
 await Check("TLS loopback transports real framed messages with a pinned certificate", async () =>
 {
-    using var rsa = RSA.Create(2048);
-    var req = new CertificateRequest("CN=Dis test", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
-    using var cert = req.CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddDays(1));
+    using var identity = new SessionIdentity();
+    var cert = identity.Certificate;
     byte[] pin = SHA256.HashData(cert.RawData);
     using var listener = new TcpListener(IPAddress.Loopback, 0); listener.Start();
     using var client = new TcpClient();

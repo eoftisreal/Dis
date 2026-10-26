@@ -4,7 +4,6 @@ using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Authentication;
-using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using Dis.Core;
 
@@ -19,29 +18,21 @@ internal sealed class DisplayServer : IAsyncDisposable
     private readonly CancellationTokenSource stop = new();
     private readonly TcpListener listener;
     private readonly PairingToken token = new();
-    private readonly X509Certificate2 certificate;
+    private readonly SessionIdentity identity;
     private readonly SemaphoreSlim handshakeSlots = new(4);
     private readonly List<Task> sessions = [];
     private readonly Task acceptTask;
     private int active;
     public event Action<string>? Status;
-    public string Fingerprint { get; }
+    public string Fingerprint => identity.Fingerprint;
 
     public DisplayServer(ServerOptions options)
     {
         this.options = options;
-        using var rsa = RSA.Create(2048);
-        var request = new CertificateRequest("CN=Dis Desktop", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
-        request.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, true));
-        request.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment, true));
-        request.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension(new OidCollection { new("1.3.6.1.5.5.7.3.1") }, true));
-        using var created = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-5), DateTimeOffset.UtcNow.AddDays(7));
-        // Reimport to detach the certificate from the disposed RSA instance, including on Schannel.
-        certificate = X509CertificateLoader.LoadPkcs12(created.Export(X509ContentType.Pfx), null);
-        Fingerprint = Convert.ToHexString(SHA256.HashData(certificate.RawData)).ToLowerInvariant();
+        identity = new();
         listener = new(options.Address, options.Port);
         try { listener.Start(4); }
-        catch { certificate.Dispose(); throw; }
+        catch { identity.Dispose(); throw; }
         acceptTask = AcceptAsync();
     }
 
@@ -80,7 +71,7 @@ internal sealed class DisplayServer : IAsyncDisposable
                     deadline.CancelAfter(TimeSpan.FromSeconds(10));
                     await tls.AuthenticateAsServerAsync(new SslServerAuthenticationOptions
                     {
-                        ServerCertificate = certificate,
+                        ServerCertificate = identity.Certificate,
                         EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
                         ClientCertificateRequired = false,
                         CertificateRevocationCheckMode = X509RevocationMode.NoCheck
@@ -226,7 +217,7 @@ internal sealed class DisplayServer : IAsyncDisposable
         finally
         {
             try { await Task.WhenAll(sessions); }
-            finally { handshakeSlots.Dispose(); certificate.Dispose(); stop.Dispose(); }
+            finally { handshakeSlots.Dispose(); identity.Dispose(); stop.Dispose(); }
         }
     }
 }
