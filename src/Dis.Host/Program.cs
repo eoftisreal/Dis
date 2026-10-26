@@ -3,9 +3,16 @@ namespace Dis.Host;
 internal static class Program
 {
     [STAThread]
-    private static void Main()
+    private static void Main(string[] args)
     {
         ApplicationConfiguration.Initialize();
-        Application.Run(new MainForm());
+        if (args.Contains("--display-smoke"))
+        {
+            string output = Path.GetFullPath("artifacts/display-smoke.json");
+            try { DisplaySmoke.RunAsync(output).GetAwaiter().GetResult(); Environment.ExitCode = 0; }
+            catch (Exception e) { File.WriteAllText(output, e.ToString()); Environment.ExitCode = 1; }
+            return;
+        }
+        Application.Run(args.Contains("--install-display-driver") ? new DriverSetupForm() : new MainForm());
     }
 }

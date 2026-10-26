@@ -1,6 +1,7 @@
 package io.github.eoftisreal.dis;
 
 import android.app.Activity;
+import android.content.pm.ActivityInfo;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.text.InputType;
@@ -10,6 +11,10 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.widget.FrameLayout;
+import android.widget.Spinner;
+import android.widget.ArrayAdapter;
+import android.widget.AdapterView;
 
 public final class MainActivity extends Activity {
     private DisplayClient client;
@@ -20,6 +25,10 @@ public final class MainActivity extends Activity {
     private LinearLayout controls;
     private boolean fullscreen;
     private int generation;
+    private boolean foreground;
+    private boolean disconnecting;
+    private String currentLink="",pendingLink;
+    private Button full;
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -35,23 +44,50 @@ public final class MainActivity extends Activity {
         LinearLayout bar=new LinearLayout(this); bar.setOrientation(LinearLayout.HORIZONTAL); bar.setPadding(dp(12),0,dp(8),0);
         status=new TextView(this); status.setText(R.string.ready); status.setTextColor(Color.LTGRAY); status.setTextSize(12);
         bar.addView(status,new LinearLayout.LayoutParams(0,-2,1));
-        Button full=new Button(this); full.setText(R.string.full_screen); full.setOnClickListener(v -> {
+        full=new Button(this); full.setText(R.string.full_screen); full.setOnClickListener(v -> {
             fullscreen=!fullscreen; controls.setVisibility(fullscreen ? View.GONE : View.VISIBLE); full.setText(fullscreen ? R.string.controls : R.string.full_screen);
-        }); bar.addView(full); root.addView(bar);
-        display=new DisplayView(this); root.addView(display,new LinearLayout.LayoutParams(-1,0,1));
+        }); bar.addView(full);
+        Spinner orientation=new Spinner(this);
+        ArrayAdapter<CharSequence> orientationChoices=ArrayAdapter.createFromResource(this,R.array.orientation_options,android.R.layout.simple_spinner_dropdown_item);
+        orientation.setAdapter(orientationChoices);
+        orientation.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override public void onNothingSelected(AdapterView<?> parent) { }
+            @Override public void onItemSelected(AdapterView<?> parent,View view,int position,long id) {
+                setRequestedOrientation(position==1 ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                    : position==2 ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT : ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR);
+            }
+        }); bar.addView(orientation); root.addView(bar);
+        FrameLayout surfaceArea=new FrameLayout(this); surfaceArea.setBackgroundColor(Color.BLACK);
+        display=new DisplayView(this); surfaceArea.addView(display,new FrameLayout.LayoutParams(-1,-1));
+        surfaceArea.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob) -> display.updateVideoLayout());
+        root.addView(surfaceArea,new LinearLayout.LayoutParams(-1,0,1));
         setContentView(root);
         connect.setOnClickListener(v -> {
             if (client!=null) { disconnect(); status.setText(R.string.disconnected); return; }
-            try {
-                ConnectionSpec spec=ConnectionSpec.parse(link.getText().toString());
+            connectTo(link.getText().toString());
+        });
+    }
+
+    private void connectTo(String uri) {
+        if (client!=null) {
+            if (!currentLink.equals(uri) || disconnecting) { pendingLink=uri; disconnect(); }
+            return;
+        }
+        try {
+                ConnectionSpec spec=ConnectionSpec.parse(uri);
+                currentLink=uri;
                 final int epoch=++generation;
                 client=new DisplayClient(spec,display,new DisplayClient.Listener() {
                     @Override public void status(String text) { runOnUiThread(() -> { if (epoch==generation) status.setText(text); }); }
-                    @Override public void ended() { runOnUiThread(() -> { if (epoch==generation) { client=null; connect.setEnabled(true); setConnected(false); } }); }
+                    @Override public void ended() { runOnUiThread(() -> {
+                        if (epoch!=generation) return;
+                        client=null; disconnecting=false; connect.setEnabled(true); setConnected(false);
+                        String next=pendingLink; pendingLink=null;
+                        if (next!=null && foreground) connectTo(next);
+                    }); }
                 });
                 setConnected(true); client.start();
-            } catch (IllegalArgumentException e) { status.setText(e.getMessage()); }
-        });
+        } catch (IllegalArgumentException e) { status.setText(e.getMessage()); }
     }
 
     private void setConnected(boolean connected) {
@@ -60,9 +96,17 @@ public final class MainActivity extends Activity {
         else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
     }
     private void disconnect() {
-        if (client!=null) { connect.setEnabled(false); client.close(); }
+        if (client!=null) { disconnecting=true; connect.setEnabled(false); client.close(); }
         else setConnected(false);
     }
     private int dp(int n) { return Math.round(n*getResources().getDisplayMetrics().density); }
-    @Override protected void onStop() { disconnect(); super.onStop(); }
+    @Override protected void onResume() {
+        super.onResume(); foreground=true;
+        String usb=UsbConnectActivity.takeConnection();
+        if (usb!=null) {
+            link.setText(usb); controls.setVisibility(View.GONE); fullscreen=true; full.setText(R.string.controls);
+            connectTo(usb);
+        }
+    }
+    @Override protected void onStop() { foreground=false; pendingLink=null; disconnect(); super.onStop(); }
 }

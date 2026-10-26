@@ -4,7 +4,7 @@ using System.Text.Json.Serialization;
 
 namespace Dis.Core;
 
-public enum MessageType : byte { Hello = 1, Config, Frame, Input, Ack, Ping, Pong, Error }
+public enum MessageType : byte { Hello = 1, Config, Frame, Input, Ack, Ping, Pong, Error, CodecConfig }
 public readonly record struct Packet(MessageType Type, uint Sequence, byte[] Payload);
 
 /// <summary>Versioned, bounded framing shared by every transport. Integers are big endian.</summary>
@@ -25,6 +25,7 @@ public static class Wire
         {
             MessageType.Frame => length is >= 13 and <= MaxFrameBytes,
             MessageType.Input => length == 24,
+            MessageType.CodecConfig => length is >= 8 and <= 65536,
             MessageType.Ack => length == 0,
             MessageType.Ping or MessageType.Pong => length == 8,
             MessageType.Hello or MessageType.Config or MessageType.Error => length is >= 2 and <= MaxJsonBytes,

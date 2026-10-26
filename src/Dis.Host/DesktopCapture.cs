@@ -20,8 +20,8 @@ internal sealed class DesktopCapture : IDisposable
     {
         this.source = source;
         Size = size;
-        desktop = new(source.Width, source.Height, PixelFormat.Format24bppRgb);
-        scaled = new(size.Width, size.Height, PixelFormat.Format24bppRgb);
+        desktop = new(source.Width, source.Height, PixelFormat.Format32bppArgb);
+        scaled = new(size.Width, size.Height, PixelFormat.Format32bppArgb);
         captureGraphics = Graphics.FromImage(desktop);
         scaleGraphics = Graphics.FromImage(scaled);
         scaleGraphics.CompositingMode = CompositingMode.SourceCopy;
@@ -31,13 +31,26 @@ internal sealed class DesktopCapture : IDisposable
 
     public byte[] Capture()
     {
-        captureGraphics.CopyFromScreen(source.Location, Point.Empty, source.Size, CopyPixelOperation.SourceCopy);
-        DrawCursor();
-        scaleGraphics.DrawImage(desktop, new Rectangle(0, 0, Size.Width, Size.Height));
+        CaptureScaled();
         using var buffer = new MemoryStream();
         scaled.Save(buffer, jpeg, parameters);
         if (buffer.Length > Wire.MaxFrameBytes - 12) throw new InvalidDataException("Encoded desktop exceeds frame limit.");
         return buffer.ToArray();
+    }
+
+    public async Task<EncodedFrame?> CaptureH264Async(NativeEncoder encoder, long timestamp)
+    {
+        CaptureScaled();
+        var bits = scaled.LockBits(new Rectangle(0, 0, Size.Width, Size.Height), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+        try { return await encoder.EncodeAsync(bits.Scan0, bits.Stride, timestamp); }
+        finally { scaled.UnlockBits(bits); }
+    }
+
+    private void CaptureScaled()
+    {
+        captureGraphics.CopyFromScreen(source.Location, Point.Empty, source.Size, CopyPixelOperation.SourceCopy);
+        DrawCursor();
+        scaleGraphics.DrawImage(desktop, new Rectangle(0, 0, Size.Width, Size.Height));
     }
 
     private void DrawCursor()

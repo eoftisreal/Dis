@@ -1,7 +1,10 @@
 <resources>
     <string name="app_name">Dis</string>
     <string name="app_heading">Dis / Your next screen</string>
-    <string name="setup_help">Paste the connection link from Dis on Windows. Works over USB (ADB), USB tethering, Ethernet or Wi-Fi.</string>
+    <string name="setup_help">For USB, press Connect on Windows: Dis opens and connects automatically. For a network connection, enter the connection link below.</string>
+    <string-array name="orientation_options">
+        <item>Auto</item><item>Landscape</item><item>Portrait</item>
+    </string-array>
     <string name="connection_hint">dis://…</string>
     <string name="connect_display">Connect display</string>
     <string name="disconnect">Disconnect</string>

@@ -3,7 +3,14 @@ using System.Security.Cryptography;
 namespace Dis.Core;
 
 public sealed record ClientHello(int Version, string Token, int MaxWidth, int MaxHeight, int Fps, string Codec);
-public sealed record StreamConfig(int Version, string Codec, int Width, int Height, int Fps, bool Input, bool Pen);
+public sealed record StreamConfig(int Version, string Codec, int Width, int Height, int Fps, bool Input, bool Pen, string Encoder = "JPEG");
+
+public sealed class PairingSession : IDisposable
+{
+    public SessionIdentity Identity { get; } = new();
+    public PairingToken Token { get; } = new();
+    public void Dispose() => Identity.Dispose();
+}
 
 public readonly record struct FrameSize(int Width, int Height)
 {
@@ -17,9 +24,16 @@ public readonly record struct FrameSize(int Width, int Height)
 
     public static void Validate(ClientHello hello)
     {
-        if (hello.Version != 1 || hello.Codec != "jpeg" || hello.MaxWidth is < 320 or > 4096 ||
+        if (hello.Version is < 1 or > 2 || (hello.Codec != "jpeg" && !(hello.Version == 2 && hello.Codec == "h264")) || hello.MaxWidth is < 320 or > 4096 ||
             hello.MaxHeight is < 240 or > 4096 || hello.Fps is < 1 or > 60)
             throw new InvalidDataException("Unsupported stream capabilities.");
+    }
+
+    public static FrameSize FitVideo(int width, int height, int maxWidth, int maxHeight, int maxPixels)
+    {
+        var fitted = Fit(width, height, maxWidth, maxHeight);
+        double scale = Math.Min(1, Math.Sqrt(maxPixels / ((double)fitted.Width * fitted.Height)));
+        return new(Math.Max(2, ((int)(fitted.Width * scale)) & ~1), Math.Max(2, ((int)(fitted.Height * scale)) & ~1));
     }
 }
 

@@ -1,41 +1,17 @@
-# Virtual display driver development
+# Second-display driver
 
-The driver uses Windows IddCx/UMDF, adapted from Microsoft's sample under [MS-PL](../driver/LICENSE). It creates one EDID-less monitor with landscape and portrait desktop modes. It is **not a signed, production-ready installer**.
+Normal setup uses the signed x64 VirtualDrivers package from release 25.7.23:
 
-## Build on Windows 11 x64
+- Source/project: https://github.com/VirtualDrivers/Virtual-Display-Driver
+- Artifact: VirtualDisplayDriver-x86.Driver.Only.zip (despite its artifact name, the INF targets NTamd64 and the DLL is PE32+ x64)
+- SHA-256: e24210692b442b39af763536330ce78b423f19342b7a7792c26de3944e418b3a
+- Catalog publisher: SignPath Foundation; certificate chain to GlobalSign Code Signing Root R45.
+- License: [VirtualDrivers MIT license](../third_party/VDD/LICENSE), plus the retained [Microsoft sample license](../driver/LICENSE).
 
-Install Visual Studio 2022 C++ tools, the matching Windows SDK/WDK and WDK Visual Studio integration, plus Spectre-mitigated C++ libraries. From the corresponding developer command prompt:
+Dis packages the unmodified archive and licenses. First-time setup verifies its checksum and Windows catalog trust, registers the Root\MttVDD software device if absent, and asks Windows to bind the signed package. The Windows administrator request and publisher prompt are part of this explicit setup action. Dis does not import certificates, disable signature enforcement, or modify Secure Boot. Existing upstream display settings are preserved.
 
-```bat
-msbuild driver\DisIdd\DisIdd.vcxproj /m /p:Configuration=Release /p:Platform=x64
-```
+After this one-time setup, normal USB streaming does not require elevated Dis. Second display activates the virtual monitor beside the existing desktop without promoting it to primary. The selected Windows monitor can be rotated; applying rotation restarts the stream while retaining pairing. The driver/device remains installed after Dis closes, and its virtual monitor remains available in Windows display settings.
 
-Use the SDK/WDK versions actually installed together; override `WindowsTargetPlatformVersion` if required by that installation. Check InfVerif/Inf2Cat results and all build output before treating a package as installable. No WDK build has been verified in the initial milestone.
+CI uses a disposable Windows VM. Its driver test checks the catalog's normal Windows trust and imports only the known leaf certificate into that VM's TrustedPublisher store to simulate accepting the publisher prompt; it removes that entry afterward. This CI-only publisher setup is not part of the app installer and does not alter root trust. The test attempts a real virtual monitor and landscape/portrait mode change. See the actual Actions result for validation status.
 
-## Installation and activation
-
-Driver installation requires a properly trusted/signable package. A development-signed package is only for an isolated Windows driver-development environment configured according to Microsoft's testing guidance. This project does not change Secure Boot, enable test mode, install certificates, or disable signature enforcement for you.
-
-For a trusted package, stage the generated INF using an administrator terminal:
-
-```bat
-pnputil /add-driver path\to\DisIdd.inf /install
-```
-
-Staging alone does not instantiate a software device. Run Dis as administrator for **Add virtual monitor**; its `SwDeviceCreate` call uses hardware ID `DisDisplay`. The driver must already be available. In Windows Display settings, choose **Extend** for the Dis monitor, then **Refresh displays** in Dis and select it as the stream source.
-
-The software device is handle-scoped: **Remove virtual monitor** or closing the host releases it. Disconnecting Android alone does not currently remove the virtual monitor. A narrow privileged helper and automatic session-scoped attach/detach are future work.
-
-## Current capture path
-
-The driver consumes/relinquishes IddCx surfaces; it does not export shared GPU textures. The host independently captures an active Windows monitor with GDI, scales it while retaining aspect ratio, and encodes JPEG. Confirm that capture path works with the installed driver on the target Windows build; it has not been physically tested here. The extension driver is not bundled in normal CI app artifacts.
-
-## Required validation
-
-Build/sign/install/uninstall; one active monitor only; portrait/landscape mode enumeration; insufficient callback-buffer handling; power cycles and sleep/resume; GPU/device removal; continuous-frame teardown; monitor context cleanup; display capture; DPI/layout changes; and Windows Driver Verifier/HLK checks appropriate to the eventual distribution.
-
-Primary references:
-
-- https://learn.microsoft.com/windows-hardware/drivers/display/indirect-display-driver-model-overview
-- https://github.com/microsoft/Windows-driver-samples/tree/bb68ed5e770bce04dc5395ec9258dafab034184d/video/IndirectDisplay
-- https://learn.microsoft.com/windows/win32/api/swdevice/nf-swdevice-swdevicecreate
+The original `driver/DisIdd` source remains an independent development option derived from Microsoft's sample. It is not the signed default provider and has not been production-signed. Build it with matching Visual Studio/WDK tooling only if working on that driver implementation; normal users should use the app's signed-driver setup.

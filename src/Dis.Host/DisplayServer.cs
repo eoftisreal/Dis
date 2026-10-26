@@ -10,33 +10,33 @@ using Dis.Core;
 namespace Dis.Host;
 
 internal sealed record ServerOptions(IPAddress Address, int Port, string DeviceName, Rectangle Bounds,
-    int MaxWidth, int MaxHeight, int Fps, int Quality, bool Input);
+    int MaxWidth, int MaxHeight, int Fps, int Quality, bool Input, int MaxPixels = 1280 * 720);
 
 internal sealed class DisplayServer : IAsyncDisposable
 {
     private readonly ServerOptions options;
     private readonly CancellationTokenSource stop = new();
     private readonly TcpListener listener;
-    private readonly PairingToken token = new();
-    private readonly SessionIdentity identity;
+    private readonly PairingSession pairing;
+    private readonly bool ownsPairing;
     private readonly SemaphoreSlim handshakeSlots = new(4);
     private readonly List<Task> sessions = [];
     private readonly Task acceptTask;
     private int active;
     public event Action<string>? Status;
-    public string Fingerprint => identity.Fingerprint;
+    public string Fingerprint => pairing.Identity.Fingerprint;
 
-    public DisplayServer(ServerOptions options)
+    public DisplayServer(ServerOptions options, PairingSession? session = null)
     {
         this.options = options;
-        identity = new();
+        pairing = session ?? new(); ownsPairing = session is null;
         listener = new(options.Address, options.Port);
         try { listener.Start(4); }
-        catch { identity.Dispose(); throw; }
+        catch { if (ownsPairing) pairing.Dispose(); throw; }
         acceptTask = AcceptAsync();
     }
 
-    public string ConnectionUri(string host) => $"dis://{host}:{options.Port}?fp={Fingerprint}&token={token.Value}";
+    public string ConnectionUri(string host) => $"dis://{host}:{options.Port}?fp={Fingerprint}&token={pairing.Token.Value}";
 
     private async Task AcceptAsync()
     {
@@ -71,7 +71,7 @@ internal sealed class DisplayServer : IAsyncDisposable
                     deadline.CancelAfter(TimeSpan.FromSeconds(10));
                     await tls.AuthenticateAsServerAsync(new SslServerAuthenticationOptions
                     {
-                        ServerCertificate = identity.Certificate,
+                        ServerCertificate = pairing.Identity.Certificate,
                         EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
                         ClientCertificateRequired = false,
                         CertificateRevocationCheckMode = X509RevocationMode.NoCheck
@@ -80,7 +80,7 @@ internal sealed class DisplayServer : IAsyncDisposable
                     if (helloPacket.Type != MessageType.Hello || helloPacket.Sequence != 0)
                         throw new InvalidDataException("Expected client hello.");
                     var hello = Wire.ParseJson<ClientHello>(helloPacket);
-                    if (!token.Matches(hello.Token)) throw new AuthenticationException("Pairing rejected.");
+                    if (!pairing.Token.Matches(hello.Token)) throw new AuthenticationException("Pairing rejected.");
                     FrameSize.Validate(hello);
                     if (Interlocked.CompareExchange(ref active, 1, 0) != 0)
                     {
@@ -107,16 +107,47 @@ internal sealed class DisplayServer : IAsyncDisposable
 
     private async Task StreamAsync(SslStream tls, TcpClient client, ClientHello hello, CancellationTokenSource life)
     {
-        var size = FrameSize.Fit(options.Bounds.Width, options.Bounds.Height,
-            Math.Min(options.MaxWidth, hello.MaxWidth), Math.Min(options.MaxHeight, hello.MaxHeight));
+        using var timer = new StreamTimer();
+        var size = FrameSize.FitVideo(options.Bounds.Width, options.Bounds.Height,
+            Math.Min(options.MaxWidth, hello.MaxWidth), Math.Min(options.MaxHeight, hello.MaxHeight), options.MaxPixels);
         int fps = Math.Min(options.Fps, hello.Fps);
         using var capture = new DesktopCapture(options.Bounds, size, options.Quality);
         using var input = new InputInjector(options.Bounds);
         using var writer = new SemaphoreSlim(1);
-        var ack = new AckWindow();
+        using var ack = new FrameWindow(hello.Version >= 2 ? 2 : 1);
+        NativeEncoder? encoder = null;
+        EncodedFrame? first = null;
+        string codec = "jpeg", encoderName = "JPEG fallback";
+        byte[]? configuration = null;
+        if (hello.Version >= 2 && hello.Codec == "h264")
+        {
+            try
+            {
+                encoder = await NativeEncoder.CreateAsync(size.Width, size.Height, fps, Math.Clamp(size.Width * size.Height * 5, 2_000_000, 12_000_000), true);
+                var started = Stopwatch.GetTimestamp();
+                while (first is null && Stopwatch.GetElapsedTime(started).TotalSeconds < 2)
+                {
+                    life.Token.ThrowIfCancellationRequested();
+                    first = await capture.CaptureH264Async(encoder, TimestampUs());
+                    if (first is null) await Task.Delay(4, life.Token);
+                }
+                if (first is null) throw new IOException("Encoder produced no frame during startup.");
+                configuration = H264.ParameterSets(first.Configuration, first.Data);
+                codec = "h264"; encoderName = encoder.Hardware ? "H.264 hardware" : "H.264 software";
+            }
+            catch (Exception e) when (e is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException or
+                System.Runtime.InteropServices.COMException or IOException or TimeoutException)
+            {
+                encoder?.Dispose(); encoder = null; first = null;
+                Status?.Invoke($"H.264 unavailable ({e.Message}); using JPEG fallback.");
+            }
+        }
+        using var encoderLifetime = encoder;
+        if (codec == "jpeg") fps = Math.Min(fps, 30);
         await Wire.WriteAsync(tls, Wire.Json(MessageType.Config,
-            new StreamConfig(1, "jpeg", size.Width, size.Height, fps, options.Input, options.Input && input.PenAvailable)), life.Token);
-        Status?.Invoke($"Connected · {size.Width} × {size.Height} · JPEG · touch {(options.Input ? "on" : "off")}");
+            new StreamConfig(hello.Version, codec, size.Width, size.Height, fps, options.Input, options.Input && input.PenAvailable, encoderName)), life.Token);
+        if (configuration is not null) await Wire.WriteAsync(tls, new(MessageType.CodecConfig, 0, configuration), life.Token);
+        Status?.Invoke($"Connected · {size.Width} × {size.Height} · {encoderName}");
         var receive = ReceiveAsync();
         var send = SendAsync();
         try
@@ -182,25 +213,33 @@ internal sealed class DisplayServer : IAsyncDisposable
                         throw new IOException("Display layout changed. Select the display and reconnect.");
                     geometryChecked = start;
                 }
-                byte[] jpeg = capture.Capture();
-                byte[] payload = new byte[jpeg.Length + 12];
+                long timestamp = TimestampUs();
+                byte[] data;
+                if (encoder is not null)
+                {
+                    EncodedFrame? frame = first ?? await capture.CaptureH264Async(encoder, timestamp);
+                    first = null;
+                    if (frame is null) { await Task.Delay(2, life.Token); continue; }
+                    data = frame.Data; timestamp = frame.TimestampUs;
+                }
+                else data = capture.Capture();
+                byte[] payload = new byte[data.Length + 12];
                 BinaryPrimitives.WriteUInt16BigEndian(payload, (ushort)size.Width);
                 BinaryPrimitives.WriteUInt16BigEndian(payload.AsSpan(2), (ushort)size.Height);
-                BinaryPrimitives.WriteInt64BigEndian(payload.AsSpan(4), (long)(Stopwatch.GetTimestamp() * (1_000_000.0 / Stopwatch.Frequency)));
-                jpeg.CopyTo(payload, 12);
-                Task acknowledged = ack.Expect(++sequence);
+                BinaryPrimitives.WriteInt64BigEndian(payload.AsSpan(4), timestamp);
+                data.CopyTo(payload, 12);
                 using (var frameDeadline = CancellationTokenSource.CreateLinkedTokenSource(life.Token))
                 {
                     frameDeadline.CancelAfter(TimeSpan.FromSeconds(8));
+                    await ack.ReserveAsync(++sequence, frameDeadline.Token);
                     await WriteAsync(new(MessageType.Frame, sequence, payload), frameDeadline.Token);
-                    await acknowledged.WaitAsync(frameDeadline.Token);
                 }
                 sent++;
                 bytes += payload.Length;
                 double seconds = Stopwatch.GetElapsedTime(stats).TotalSeconds;
                 if (seconds >= 2)
                 {
-                    Status?.Invoke($"Streaming · {sent / seconds:F1} fps · {bytes * 8 / seconds / 1_000_000:F1} Mbps · {size.Width} × {size.Height}");
+                    Status?.Invoke($"{encoderName} · {sent / seconds:F1} fps · {bytes * 8 / seconds / 1_000_000:F1} Mbps · {size.Width} × {size.Height}");
                     stats = Stopwatch.GetTimestamp(); sent = 0; bytes = 0;
                 }
                 var delay = TimeSpan.FromSeconds(1.0 / fps) - Stopwatch.GetElapsedTime(start);
@@ -208,6 +247,8 @@ internal sealed class DisplayServer : IAsyncDisposable
             }
         }
     }
+
+    private static long TimestampUs() => (long)(Stopwatch.GetTimestamp() * (1_000_000.0 / Stopwatch.Frequency));
 
     public async ValueTask DisposeAsync()
     {
@@ -217,7 +258,7 @@ internal sealed class DisplayServer : IAsyncDisposable
         finally
         {
             try { await Task.WhenAll(sessions); }
-            finally { handshakeSlots.Dispose(); identity.Dispose(); stop.Dispose(); }
+            finally { handshakeSlots.Dispose(); if (ownsPairing) pairing.Dispose(); stop.Dispose(); }
         }
     }
 }

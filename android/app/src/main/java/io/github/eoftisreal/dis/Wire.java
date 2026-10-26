@@ -8,7 +8,7 @@ import java.nio.ByteOrder;
 
 /** DIS1. No Android dependencies, to allow independent cross-language conformance tests. */
 public final class Wire {
-    public static final int HELLO=1, CONFIG=2, FRAME=3, INPUT=4, ACK=5, PING=6, PONG=7, ERROR=8;
+    public static final int HELLO=1, CONFIG=2, FRAME=3, INPUT=4, ACK=5, PING=6, PONG=7, ERROR=8, CODEC_CONFIG=9;
     public static final int MAX_FRAME=8*1024*1024;
     private Wire() { }
 
@@ -23,6 +23,7 @@ public final class Wire {
         switch (type) {
             case FRAME: valid=length>=13 && length<=MAX_FRAME; break;
             case INPUT: valid=length==24; break;
+            case CODEC_CONFIG: valid=length>=8 && length<=65536; break;
             case ACK: valid=length==0; break;
             case PING: case PONG: valid=length==8; break;
             case HELLO: case CONFIG: case ERROR: valid=length>=2 && length<=4096; break;

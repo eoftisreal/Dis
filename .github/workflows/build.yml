@@ -1,7 +1,7 @@
 name: Build and verify
 on:
   push:
-    branches: [main]
+    branches: [main, feature/smooth-display-v2]
   pull_request:
   workflow_dispatch:
 permissions:
@@ -17,8 +17,48 @@ jobs:
           dotnet-version: '10.0.x'
       - name: Protocol, security and Windows ADB startup tests
         run: dotnet run --project tests/Dis.Core.Tests -c Release -- --check-installed-adb
+      - name: Build native H.264 encoder
+        shell: pwsh
+        run: |
+          cmake -S native -B artifacts/native -A x64
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --build artifacts/native --config Release --parallel
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & artifacts/native/Release/DisCodecSmoke.exe artifacts/native-smoke.h264
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ffmpeg -v error -y -i artifacts/native-smoke.h264 -frames:v 24 -pix_fmt yuv420p -f rawvideo artifacts/native-smoke.yuv
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ((Get-Item artifacts/native-smoke.yuv).Length -ne (24*320*180*3/2)) { throw 'Encoded stream did not decode to all 24 pictures.' }
       - name: Build Windows app
         run: dotnet publish src/Dis.Host/Dis.Host.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o artifacts/windows
+      - name: Package native codec and signed driver
+        shell: pwsh
+        run: |
+          Copy-Item artifacts/native/Release/Dis.Codec.dll artifacts/windows/
+          New-Item -ItemType Directory -Force artifacts/windows/driver | Out-Null
+          Invoke-WebRequest 'https://github.com/VirtualDrivers/Virtual-Display-Driver/releases/download/25.7.23/VirtualDisplayDriver-x86.Driver.Only.zip' -OutFile artifacts/windows/driver/vdd-25.7.23.zip
+          if ((Get-FileHash artifacts/windows/driver/vdd-25.7.23.zip -Algorithm SHA256).Hash -ne 'E24210692B442B39AF763536330CE78B423F19342B7A7792C26DE3944E418B3A') { throw 'Driver checksum mismatch' }
+          Copy-Item third_party/VDD/LICENSE artifacts/windows/driver/LICENSE-VDD.txt
+          Copy-Item driver/LICENSE artifacts/windows/driver/LICENSE-Microsoft-sample.txt
+      - name: Verify real virtual monitor and portrait mode
+        shell: pwsh
+        run: |
+          Expand-Archive artifacts/windows/driver/vdd-25.7.23.zip artifacts/vdd-check
+          $catalog = Resolve-Path artifacts/vdd-check/VirtualDisplayDriver/mttvdd.cat
+          if ((Get-AuthenticodeSignature $catalog).Status -ne 'Valid') { throw 'Driver catalog signature is not trusted' }
+          # Only this disposable CI VM simulates accepting the publisher prompt. The app never imports certificates.
+          $certificates = [System.Security.Cryptography.X509Certificates.X509Certificate2Collection]::new()
+          $certificates.Import([IO.File]::ReadAllBytes($catalog))
+          $publisher = $certificates | Where-Object { $_.Subject -match 'CN=SignPath Foundation' } | Select-Object -First 1
+          if (-not $publisher) { throw 'Expected signed driver publisher was not found' }
+          $store = [System.Security.Cryptography.X509Certificates.X509Store]::new('TrustedPublisher','LocalMachine')
+          $store.Open('ReadWrite')
+          try {
+            $store.Add($publisher)
+            $process = Start-Process artifacts/windows/Dis.exe -ArgumentList '--display-smoke' -Wait -PassThru
+            Get-Content artifacts/display-smoke.json
+            if ($process.ExitCode -ne 0) { throw 'Virtual display or orientation smoke test failed' }
+          } finally { $store.Remove($publisher); $store.Close() }
       - uses: actions/upload-artifact@v4
         with:
           name: Dis-Windows-x64-preview
@@ -33,6 +73,10 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: dis-preview-signing-v1
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
@@ -40,7 +84,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force artifacts/java-tests | Out-Null
-          javac -d artifacts/java-tests android/app/src/main/java/io/github/eoftisreal/dis/Wire.java android/app/src/main/java/io/github/eoftisreal/dis/ConnectionSpec.java android/app/src/main/java/io/github/eoftisreal/dis/CertificatePin.java tests/java/WireTest.java
+          javac -d artifacts/java-tests android/app/src/main/java/io/github/eoftisreal/dis/Wire.java android/app/src/main/java/io/github/eoftisreal/dis/ConnectionSpec.java android/app/src/main/java/io/github/eoftisreal/dis/CertificatePin.java android/app/src/main/java/io/github/eoftisreal/dis/H264ParameterSets.java tests/java/WireTest.java
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           java -cp artifacts/java-tests io.github.eoftisreal.dis.WireTest
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -55,4 +99,27 @@ jobs:
         with:
           name: Dis-Android-preview
           path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+  package:
+    needs: [windows, android]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: Dis-Windows-x64-preview
+          path: bundle
+      - uses: actions/download-artifact@v4
+        with:
+          name: Dis-Android-preview
+          path: android-apk
+      - name: Complete USB setup bundle
+        shell: pwsh
+        run: |
+          Copy-Item android-apk/app-debug.apk bundle/Dis.apk
+          Copy-Item docs/QUICK_START.txt bundle/START_HERE.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Dis-Complete-Preview
+          path: bundle/
           if-no-files-found: error

@@ -1,73 +1,46 @@
-# Dis — Windows to Android display
+# Dis — Windows to Android second display
 
-A developing alternative to SuperDisplay, built around using an Android screen while keeping Ethernet, Wi-Fi, and USB tethering available. Windows 11 x64 host; Android 9 or newer receiver.
+Dis 0.2 preview adds a real extended-display setup, automatic USB connection, H.264 streaming, and orientation controls. Windows 11 x64 host; Android 9+ receiver.
 
-**Status: 0.1 preview source, not a finished SuperDisplay replacement.** The first transport is software JPEG over pinned TLS. It has not yet been benchmarked against SuperDisplay or tested on physical Windows/Android devices. The virtual monitor driver is source-only and needs WDK compilation, signing, and device validation.
+## Use the complete preview
 
-## Included
+Download the **Dis-Complete-Preview** artifact from a successful [Actions run](https://github.com/eoftisreal/Dis/actions). Extract the entire folder, retaining `Dis.exe`, `Dis.Codec.dll`, `Dis.apk`, and `driver`.
 
-- Windows desktop app with monitor and adapter selection, capture, cursor, quality/FPS controls, and live throughput/FPS reporting.
-- Android receiver with aspect-correct rendering, touch-to-mouse, pen pressure/tilt input, and bounded reconnect attempts.
-- USB through an ADB reverse tunnel; ordinary IP transport over Ethernet, Wi-Fi, or a USB-tethering adapter.
-- Certificate-pinned TLS and a random 256-bit pairing token. Stopping the host revokes the current link.
-- Acknowledgement-controlled streaming: at most one unconsumed frame, bounded messages, handshake limits, and input release on disconnect.
-- An adapted Microsoft IddCx virtual monitor driver with portrait/landscape modes and software-device lifecycle support in the host.
-- Protocol/security tests in C# and Java, build scripts, and Windows CI.
+1. Authorize USB debugging on the phone and make Android Platform Tools available on Windows. The app detects normal SDK installations and a `platform-tools` folder beside Dis.exe; Browse is available under Advanced.
+2. Press **Install/update Android app**. This installs the bundled APK over USB. An older preview with a different debug signing key may need to be uninstalled once on the phone before updating.
+3. Press **Set up second display** once. Accept the administrator request and Windows publisher prompt if shown. This installs the pinned, signed Virtual Display Driver by VirtualDrivers/MikeTheTech, signed by SignPath Foundation.
+4. Choose **USB**, **Second display**, and **Connect**. Dis opens the Android receiver and transfers pairing credentials automatically through the authorized USB connection. There is no connection-link copying in USB mode.
 
-Dis does not change routes, DNS, adapter priorities, tethering state, or USB accessory mode. Display traffic still shares finite link bandwidth with other traffic; zero interference is a hardware test goal, not a claim established by source inspection.
+Choose **Mirror selected screen** to stream an existing monitor without installing a virtual display driver. Network connections over Ethernet, Wi-Fi, or USB tethering remain available under Connection; manual network pairing remains under Advanced.
+
+## Smoothness and orientation
+
+The default path is H.264: Windows Media Foundation selects a usable hardware encoder when available, with a software encoder fallback. Android MediaCodec renders directly to a Surface. A two-frame window replaces the old stop-and-wait transport. Buffers remain bounded; encoded reference frames are never silently dropped. The live status shows the encoder actually used, delivered frame rate, and throughput.
+
+Start with **720p · smooth** and a 60 fps target. Use **1080p · detailed** after checking performance. If H.264 cannot initialize, the app reports **JPEG fallback**. A target frame rate is not a measured guarantee on a particular PC/phone.
+
+**Windows orientation** changes the selected Windows monitor to landscape, portrait, or a flipped mode. Applying it restarts the stream with the same pairing session and automatically reconnects USB. The Android **Auto / Landscape / Portrait** selector controls the phone's own orientation separately. Portrait streams preserve aspect ratio and can use a full-height video mode.
+
+## What is and is not established
+
+This is an independent developing application, not recovered SuperDisplay source. Its official Windows installer was examined statically; its Android APK and private protocol were not reverse engineered. No SuperDisplay code or assets are included.
+
+The original source-only Dis IddCx driver remains under `driver/DisIdd` for development. Normal second-display setup now uses the separately attributed, signed VirtualDrivers package instead. Setup verifies its pinned SHA-256 and catalog signature; it does not disable signature enforcement, change Secure Boot, or install root certificates. Installing the driver is an explicit first-setup action. The installed virtual monitor remains available in Windows after streaming stops.
+
+There is no claim yet that Dis outperforms SuperDisplay on the user's hardware. GPU-specific hardware encoder behavior, Android decoder performance, USB bandwidth/thermal behavior, color accuracy, and comparison benchmarks require real-device measurements. Ethernet and tethering configuration are left untouched, but display traffic still consumes link bandwidth.
 
 ## Build on Windows
 
-### Windows app
+Install .NET 10 SDK and Visual Studio C++ tools/CMake, then run `BUILD_WINDOWS.cmd`. The native codec uses Windows Media Foundation and has no FFmpeg runtime dependency. For Android, install JDK 17 and Android SDK 35/build tools 35.0.0, set JAVA_HOME and ANDROID_HOME, and run `BUILD_ANDROID.cmd`.
 
-Install the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0), then run:
-
-```bat
-BUILD_WINDOWS.cmd
-```
-
-The self-contained executable is written to `artifacts\windows\Dis.exe`. No display driver is needed to stream an already-active monitor.
-
-### Android app
-
-Install Android Studio with SDK platform 35, build tools 35.0.0, and JDK 17. Set `JAVA_HOME` to JDK 17 and `ANDROID_HOME` to the Android SDK folder. Run:
-
-```bat
-BUILD_ANDROID.cmd
-```
-
-The build script verifies and downloads Gradle 8.9, then builds/lints the app. Output: `artifacts\android\Dis-preview.apk`. You can also open `android` in Android Studio. Preview APKs use a debug signing key; production signing and Play Store distribution are not set up.
-
-### Virtual monitor driver
-
-See [driver setup](docs/DRIVER.md). Building the normal Windows app does **not** build or install the driver. Mirroring works on an existing display; an extended desktop requires an active virtual display. The host's **Add virtual monitor** action currently needs administrator access and an installed, trusted Dis driver.
-
-## Connect
-
-1. Launch Dis on Windows and select an active display.
-2. Choose either **USB cable (ADB)** or the intended network adapter. For ADB, install Android Platform Tools, enable USB debugging, authorize the PC, and provide `adb.exe` if it is not on PATH.
-3. Start the display and copy the complete connection link into the Dis Android app. Treat the link as a secret; it grants viewing and, if enabled, input for that host session.
-4. Connect. Stop on Windows to revoke the link. Reconnect with a fresh link after restarting the host.
-
-For USB tethering without ADB, leave tethering enabled, select its Windows adapter in Dis, and connect Android to the Windows IP shown in the link. For Ethernet on the PC and Wi-Fi on Android, both devices must be reachable on the same LAN. Android-side Ethernet adapters can also provide IP connectivity, subject to the device's USB host/accessory limitations.
-
-If Windows Firewall blocks network mode, allow Dis on the intended private network. The app does not create broad firewall rules. ADB mode listens only on loopback. Remote input targets ordinary desktop applications; Windows can block injection into elevated applications or the secure desktop.
-
-### If Windows cannot find `adb.exe`
-
-Download **SDK Platform-Tools for Windows** from [Google's official page](https://developer.android.com/tools/releases/platform-tools). Extract the **entire** `platform-tools` folder beside `Dis.exe`, including its DLLs. Dis now looks there automatically, also checks Android Studio's usual SDK location, `ANDROID_HOME`, `ANDROID_SDK_ROOT`, and PATH, and offers **Browse…** to select `adb.exe` explicitly.
-
-In an older Dis build, enter the full executable path in **ADB executable**, for example `C:\Android\platform-tools\adb.exe`. Installing Android Studio or changing PATH is not required. USB debugging must still be enabled and the PC authorized on the phone after ADB starts.
-
-For Ethernet, Wi-Fi, or a USB-tethering network connection, select that network adapter instead of **USB cable (ADB)**; those modes do not launch ADB.
+The CI builds both apps, runs protocol/security/ADB tests, encodes and independently decodes an actual H.264 stream, checks the signed driver and virtual-monitor orientation, and assembles the complete USB setup package. Consult the actual run results rather than assuming these gates have passed for an arbitrary revision.
 
 ## Project records
 
-- [Current progress and verification](docs/STATUS.md)
-- [SuperDisplay static research](docs/SUPERDISPLAY_RESEARCH.md)
-- [Wire protocol](docs/PROTOCOL.md)
-- [Network coexistence acceptance tests](docs/NETWORK_TESTS.md)
-- [Roadmap and release gates](docs/ROADMAP.md)
-- [Driver provenance and license](driver/UPSTREAM.md)
-
-SuperDisplay code, APKs, installer payloads, icons, and private protocol implementations are not included. This implementation uses its own protocol and UI, standard Windows/Android APIs, and an attributed Microsoft driver sample. No interoperability with SuperDisplay is claimed.
+- [Current status](docs/STATUS.md)
+- [Quick start](docs/QUICK_START.txt)
+- [Protocol](docs/PROTOCOL.md)
+- [Driver setup and provenance](docs/DRIVER.md)
+- [Network coexistence acceptance matrix](docs/NETWORK_TESTS.md)
+- [Reference-product research](docs/SUPERDISPLAY_RESEARCH.md)
+- [Roadmap](docs/ROADMAP.md)

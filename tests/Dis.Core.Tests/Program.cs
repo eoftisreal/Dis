@@ -49,7 +49,7 @@ await Check("reject future flags, types, and incompatible versions", async () =>
         using var stream = new MemoryStream(bytes);
         await Throws<InvalidDataException>(async () => { await Wire.ReadAsync(stream); });
     }
-    await Throws<InvalidDataException>(() => { FrameSize.Validate(new(2, "token", 1920, 1080, 30, "jpeg")); return Task.CompletedTask; });
+    await Throws<InvalidDataException>(() => { FrameSize.Validate(new(3, "token", 1920, 1080, 30, "jpeg")); return Task.CompletedTask; });
 });
 await Check("read cancellation unblocks a silent peer", async () =>
 {
@@ -161,6 +161,41 @@ await Check("missing explicit ADB does not silently switch installations", async
     File.Delete(fallback);
     Require(AdbLocator.Find(null, files.Locations with { AndroidHome = "\0invalid" }) is null);
     await Throws<IOException>(() => { AdbLocator.Resolve(null, files.Locations); return Task.CompletedTask; });
+});
+await Check("two-frame window pipelines without unbounded buffering", async () =>
+{
+    using var window = new FrameWindow(2);
+    await window.ReserveAsync(uint.MaxValue, default); await window.ReserveAsync(0, default);
+    Task blocked = window.ReserveAsync(1, default);
+    Require(!blocked.IsCompleted && !window.Acknowledge(99));
+    Require(window.Acknowledge(0)); await blocked.WaitAsync(TimeSpan.FromSeconds(1));
+    Require(!window.Acknowledge(0) && window.Acknowledge(uint.MaxValue) && window.Acknowledge(1));
+});
+await Check("cancelling a full frame window leaves no phantom frame", async () =>
+{
+    using var window = new FrameWindow(1); await window.ReserveAsync(1, default);
+    using var cancel = new CancellationTokenSource(40);
+    await Throws<OperationCanceledException>(() => window.ReserveAsync(2, cancel.Token));
+    Require(!window.Acknowledge(2) && window.Acknowledge(1));
+    await window.ReserveAsync(2, default); Require(window.Acknowledge(2));
+});
+await Check("v2 H.264 negotiation and full-height portrait geometry", async () =>
+{
+    FrameSize.Validate(new(2, "token", 1920, 1920, 60, "h264"));
+    Require(FrameSize.FitVideo(1080, 1920, 1920, 1920, 1280 * 720) == new FrameSize(720, 1280));
+    Require(FrameSize.FitVideo(1080, 1920, 1920, 1920, 1920 * 1080) == new FrameSize(1080, 1920));
+    await Throws<InvalidDataException>(() => { FrameSize.Validate(new(1, "token", 1920, 1080, 30, "h264")); return Task.CompletedTask; });
+});
+await Check("H.264 parameter-set framing and malformed lengths", async () =>
+{
+    byte[] annex = Convert.FromHexString("000000016742001e0000000168ce06e2");
+    Require(H264.ParameterSets(annex, []).SequenceEqual(annex));
+    byte[] avcc = Convert.FromHexString("0142001effe100046742001e01000468ce06e2");
+    Require(H264.ParameterSets(avcc, []).SequenceEqual(annex));
+    Require(H264.AnnexB(Convert.FromHexString("000000046742001e0000000468ce06e2")).SequenceEqual(annex));
+    await Throws<InvalidDataException>(() => { H264.AnnexB(Convert.FromHexString("000000ff01")); return Task.CompletedTask; });
+    await Throws<InvalidDataException>(() => { H264.ParameterSets(avcc[..^1], []); return Task.CompletedTask; });
+    await Throws<InvalidDataException>(() => { H264.ParameterSets([], new byte[] { 0, 0, 1, 0x65, 1 }); return Task.CompletedTask; });
 });
 if (args.Contains("--check-installed-adb"))
 {

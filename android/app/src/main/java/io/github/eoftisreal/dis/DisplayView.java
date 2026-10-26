@@ -9,6 +9,11 @@ import android.graphics.Paint;
 import android.graphics.RectF;
 import android.view.MotionEvent;
 import android.view.SurfaceView;
+import android.view.Surface;
+import android.view.SurfaceHolder;
+import android.view.Gravity;
+import android.view.ViewGroup;
+import android.widget.FrameLayout;
 import java.io.IOException;
 
 public final class DisplayView extends SurfaceView {
@@ -20,11 +25,47 @@ public final class DisplayView extends SurfaceView {
     private boolean pressed;
     private int pointerId=-1, kind;
     private long lastMove;
+    private final Object surfaceGate=new Object();
+    private volatile Runnable surfaceInvalidated;
+    private int videoWidth,videoHeight;
 
     public DisplayView(Context context) {
         super(context);
         setContentDescription(context.getString(R.string.display_description));
         setFocusable(true);
+        getHolder().addCallback(new SurfaceHolder.Callback() {
+            @Override public void surfaceCreated(SurfaceHolder holder) { synchronized(surfaceGate) { surfaceGate.notifyAll(); } }
+            @Override public void surfaceChanged(SurfaceHolder holder,int format,int width,int height) { content=new RectF(0,0,getWidth(),getHeight()); }
+            @Override public void surfaceDestroyed(SurfaceHolder holder) {
+                Runnable callback=surfaceInvalidated; if (callback!=null) callback.run();
+            }
+        });
+    }
+
+    public void setSurfaceInvalidated(Runnable callback) { surfaceInvalidated=callback; }
+    public Surface awaitSurface(long timeoutMs) throws IOException {
+        long deadline=System.nanoTime()+timeoutMs*1_000_000L;
+        synchronized(surfaceGate) {
+            while (!getHolder().getSurface().isValid()) {
+                long left=(deadline-System.nanoTime())/1_000_000L;
+                if (left<=0) throw new IOException("Display surface is not ready");
+                try { surfaceGate.wait(left); } catch (InterruptedException e) { Thread.currentThread().interrupt(); throw new IOException("Display closed",e); }
+            }
+            return getHolder().getSurface();
+        }
+    }
+    public void setVideoGeometry(int width,int height) {
+        post(() -> { videoWidth=width; videoHeight=height; updateVideoLayout(); });
+    }
+    public void updateVideoLayout() {
+        if (!(getParent() instanceof FrameLayout) || videoWidth<=0 || videoHeight<=0) return;
+        ViewGroup parent=(ViewGroup)getParent();
+        if (parent.getWidth()<=0 || parent.getHeight()<=0) return;
+        float scale=Math.min(parent.getWidth()/(float)videoWidth,parent.getHeight()/(float)videoHeight);
+        int w=Math.max(1,Math.round(videoWidth*scale)), h=Math.max(1,Math.round(videoHeight*scale));
+        if (getLayoutParams().width!=w || getLayoutParams().height!=h)
+            setLayoutParams(new FrameLayout.LayoutParams(w,h,Gravity.CENTER));
+        content=new RectF(0,0,w,h);
     }
 
     public void configure(boolean input, boolean pen, InputSink sender) {
@@ -50,7 +91,8 @@ public final class DisplayView extends SurfaceView {
                 float scale=Math.min(canvas.getWidth()/(float)width,canvas.getHeight()/(float)height);
                 float w=width*scale, h=height*scale;
                 RectF rect=new RectF((canvas.getWidth()-w)/2,(canvas.getHeight()-h)/2,(canvas.getWidth()+w)/2,(canvas.getHeight()+h)/2);
-                canvas.drawColor(Color.BLACK); canvas.drawBitmap(image,null,rect,paint); content=rect;
+                canvas.drawColor(Color.BLACK); canvas.drawBitmap(image,null,rect,paint);
+                content=new RectF(0,0,getWidth(),getHeight());
             } catch (IllegalArgumentException e) {
                 // Surface can disappear between isValid and lockCanvas when the activity stops.
                 if (getHolder().getSurface().isValid()) throw new IOException("Cannot render display",e);

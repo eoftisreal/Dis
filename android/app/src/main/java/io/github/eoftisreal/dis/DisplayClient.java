@@ -29,21 +29,27 @@ public final class DisplayClient implements AutoCloseable, DisplayView.InputSink
     private volatile Socket socket;
     private Thread worker;
     private volatile boolean connected;
+    private volatile boolean forceJpeg;
+    private final AtomicBoolean surfaceReset=new AtomicBoolean(false);
 
     public DisplayClient(ConnectionSpec spec, DisplayView view, Listener listener) { this.spec=spec; this.view=view; this.listener=listener; }
     public void start() { worker=new Thread(this::run,"Dis connection"); worker.start(); }
 
     private void run() {
         try {
-            for (int attempt=0;running.get() && attempt<4;attempt++) {
+            int attempt=0;
+            while (running.get()) {
+                long started=System.nanoTime();
                 try { streamOnce(); break; }
                 catch (SSLHandshakeException e) { listener.status("Certificate verification failed. Copy a fresh connection link from Windows."); break; }
                 catch (ProtocolException e) { listener.status(e.getMessage()); break; }
                 catch (IOException e) {
                     if (!running.get()) break;
-                    if (attempt==3) { listener.status("Disconnected: "+e.getMessage()); break; }
-                    listener.status("Connection interrupted. Reconnecting… ("+(attempt+1)+"/3)");
-                    Thread.sleep((1L<<attempt)*1000);
+                    if (surfaceReset.getAndSet(false)) { Thread.sleep(200); continue; }
+                    if (System.nanoTime()-started>10_000_000_000L) attempt=0;
+                    if (++attempt>5) { listener.status("Disconnected: "+e.getMessage()); break; }
+                    listener.status("Reconnecting… ("+attempt+"/5)");
+                    Thread.sleep(Math.min(4000,(1L<<Math.min(attempt-1,2))*500));
                 }
             }
         } catch (GeneralSecurityException e) { listener.status("Cannot initialize encrypted connection"); }
@@ -56,6 +62,7 @@ public final class DisplayClient implements AutoCloseable, DisplayView.InputSink
         inputs.clear(); view.resetInput();
         Socket raw=new Socket(); socket=raw;
         Thread writer=null;
+        H264Decoder decoder=null;
         AtomicBoolean session=new AtomicBoolean(true);
         try {
             if (!running.get()) return;
@@ -70,20 +77,32 @@ public final class DisplayClient implements AutoCloseable, DisplayView.InputSink
             DataInputStream input=new DataInputStream(tls.getInputStream());
             DataOutputStream output=new DataOutputStream(tls.getOutputStream());
             try {
-                JSONObject hello=new JSONObject().put("version",1).put("token",spec.token).put("maxWidth",1920)
-                    .put("maxHeight",1080).put("fps",30).put("codec","jpeg");
+                JSONObject hello=new JSONObject().put("version",2).put("token",spec.token).put("maxWidth",1920)
+                    .put("maxHeight",1920).put("fps",60).put("codec",forceJpeg ? "jpeg" : "h264");
                 write(output,new Wire.Packet(Wire.HELLO,0,hello.toString().getBytes(StandardCharsets.UTF_8)));
                 Wire.Packet packet=Wire.read(input);
                 if (packet.type==Wire.ERROR) throw new ProtocolException(new JSONObject(new String(packet.payload,StandardCharsets.UTF_8)).optString("message","Connection rejected"));
                 if (packet.type!=Wire.CONFIG || packet.sequence!=0) throw new ProtocolException("Expected display configuration");
                 JSONObject config=new JSONObject(new String(packet.payload,StandardCharsets.UTF_8));
                 int width=config.getInt("width"), height=config.getInt("height");
-                if (config.getInt("version")!=1 || !"jpeg".equals(config.getString("codec")) || width<1 || height<1
-                    || width>1920 || height>1080 || config.getInt("fps")<1 || config.getInt("fps")>30)
+                String codec=config.getString("codec");
+                if (config.getInt("version")!=2 || !("jpeg".equals(codec) || "h264".equals(codec)) || width<1 || height<1
+                    || width>1920 || height>1920 || (long)width*height>1920L*1080 || config.getInt("fps")<1 || config.getInt("fps")>60)
                     throw new ProtocolException("Unsupported display configuration");
+                if ("h264".equals(codec)) {
+                    Wire.Packet csd=Wire.read(input);
+                    if (csd.type!=Wire.CODEC_CONFIG || csd.sequence!=0) throw new ProtocolException("Missing codec configuration");
+                    try {
+                        decoder=new H264Decoder(view,width,height,config.getInt("fps"),csd.payload,
+                            sequence -> write(output,new Wire.Packet(Wire.ACK,sequence,new byte[0])),
+                            error -> { forceJpeg=true; closeTransport(); });
+                    } catch (IOException e) { forceJpeg=true; throw e; }
+                    view.setSurfaceInvalidated(() -> { surfaceReset.set(true); closeTransport(); });
+                }
+                view.setVideoGeometry(width,height);
                 connected=true;
                 view.configure(config.getBoolean("input"),config.getBoolean("pen"),this);
-                listener.status("Connected · "+width+" × "+height+" · encrypted");
+                listener.status(config.optString("encoder",codec)+" · "+width+" × "+height+" · encrypted");
                 writer=new Thread(() -> {
                     try {
                         while (running.get() && session.get()) write(output,new Wire.Packet(Wire.INPUT,0,inputs.take()));
@@ -100,16 +119,22 @@ public final class DisplayClient implements AutoCloseable, DisplayView.InputSink
                         ByteBuffer body=ByteBuffer.wrap(packet.payload).order(ByteOrder.BIG_ENDIAN);
                         if ((body.getShort() & 0xffff)!=width || (body.getShort() & 0xffff)!=height)
                             throw new ProtocolException("Frame dimensions changed without negotiation");
-                        body.getLong(); // Host monotonic capture timestamp; do not compare different device clocks.
+                        long pts=body.getLong(); // Host capture clock identifies frames; it is not compared with Android's clock.
                         byte[] jpeg=new byte[body.remaining()]; body.get(jpeg);
-                        view.render(jpeg,width,height);
-                        write(output,new Wire.Packet(Wire.ACK,packet.sequence,new byte[0]));
+                        if (decoder!=null) decoder.queue(jpeg,pts,packet.sequence);
+                        else {
+                            view.render(jpeg,width,height);
+                            write(output,new Wire.Packet(Wire.ACK,packet.sequence,new byte[0]));
+                        }
                     } else if (packet.type==Wire.PONG) { /* Reserved for future round-trip measurements. */ }
                     else throw new ProtocolException("Unexpected server message");
                 }
             } catch (JSONException e) { throw new ProtocolException("Invalid server configuration"); }
         } finally {
             connected=false; view.resetInput(); session.set(false);
+            closeTransport();
+            if (decoder!=null) decoder.close();
+            view.setSurfaceInvalidated(null);
             try { if (socket!=null) socket.close(); } catch (IOException ignored) { }
             try { raw.close(); } catch (IOException ignored) { }
             if (writer!=null) {
@@ -134,6 +159,8 @@ public final class DisplayClient implements AutoCloseable, DisplayView.InputSink
         try { if (socket!=null) socket.close(); } catch (IOException ignored) { }
         if (worker!=null) worker.interrupt();
     }
+
+    private void closeTransport() { try { if (socket!=null) socket.close(); } catch (IOException ignored) { } }
 
     private static final class ProtocolException extends IOException {
         ProtocolException(String message) { super(message); }

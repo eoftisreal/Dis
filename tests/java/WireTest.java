@@ -42,6 +42,12 @@ public final class WireTest {
         rejectsUri(link.replace("dis:","http:"));
         rejectsUri(link.replace(":49830",":80"));
         rejectsUri(link.replace("&token=","&unknown="));
+        Wire.validateLength(Wire.CODEC_CONFIG,16);
+        rejects(() -> Wire.validateLength(Wire.CODEC_CONFIG,65537));
+        byte[][] parameterSets=H264ParameterSets.parse(HexFormat.of().parseHex("000000016742001e0000000168ce06e2"));
+        require(HexFormat.of().formatHex(parameterSets[0]).equals("000000016742001e"));
+        require(HexFormat.of().formatHex(parameterSets[1]).equals("0000000168ce06e2"));
+        rejects(() -> H264ParameterSets.parse(new byte[]{0,0,1,0x65,1}));
         X509Certificate certificate;
         try (var input=Files.newInputStream(Path.of("tests/fixtures/tls-pin-cert.pem"))) {
             certificate=(X509Certificate)CertificateFactory.getInstance("X.509").generateCertificate(input);

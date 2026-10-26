@@ -1,0 +1,29 @@
+DIS 0.2 PREVIEW - WINDOWS + ANDROID
+
+Extract this entire folder. Keep Dis.exe, Dis.Codec.dll, Dis.apk and the driver folder together.
+
+FIRST SETUP
+1. Authorize USB debugging on the Android device. Android Platform Tools must be available on the PC.
+2. Open Dis.exe. Press Install/update Android app to install the bundled Dis.apk.
+   If an older preview has an incompatible signing key, uninstall that old Dis app on the phone once, then install again.
+3. Press Set up second display once. Accept the administrator request and the Windows driver-publisher prompt if shown.
+   The signed driver is Virtual Display Driver by VirtualDrivers/MikeTheTech (SignPath Foundation).
+   Dis does not disable signature enforcement, modify Secure Boot, or install root certificates.
+
+NORMAL CONNECTION
+Choose USB and Second display, then Connect. Android opens and receives the encrypted connection automatically.
+No connection link needs to be copied for USB. USB debugging authorization is still required.
+
+ORIENTATION
+Windows orientation changes the actual selected Windows monitor; Apply orientation reconnects the stream automatically.
+The phone's Auto/Landscape/Portrait selector controls the Android screen orientation separately.
+
+SMOOTHNESS
+Start with 720p smooth and 60 fps. The live status identifies H.264 hardware, H.264 software, or JPEG fallback.
+H.264 hardware availability depends on the GPU driver. A 60 fps target is not a promise that every device reaches 60 fps.
+Try 1080p detailed after confirming performance. Keep Ethernet/tethering enabled; Dis does not change network routes.
+
+NETWORK MODE
+Select the intended Ethernet/Wi-Fi/tethering adapter. Manual network pairing remains under Advanced.
+
+Driver source/provenance, protocol, limitations, and current verification are recorded at github.com/eoftisreal/Dis.

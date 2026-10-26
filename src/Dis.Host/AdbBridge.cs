@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.ComponentModel;
 using Dis.Core;
+using System.Text;
 
 namespace Dis.Host;
 
@@ -33,7 +34,9 @@ internal sealed class AdbBridge(string executable, string serial, int port, bool
         return new(executable, serial, port, true);
     }
 
-    private static async Task<string> RunAsync(string executable, params string[] args)
+    private static Task<string> RunAsync(string executable, params string[] args) => RunCommandAsync(executable, TimeSpan.FromSeconds(10), args);
+
+    private static async Task<string> RunCommandAsync(string executable, TimeSpan timeout, string[] args)
     {
         var start = new ProcessStartInfo(executable) { UseShellExecute = false, CreateNoWindow = true,
             RedirectStandardOutput = true, RedirectStandardError = true };
@@ -41,13 +44,13 @@ internal sealed class AdbBridge(string executable, string serial, int port, bool
         using var process = StartProcess(start);
         Task<string> stdout = process.StandardOutput.ReadToEndAsync();
         Task<string> stderr = process.StandardError.ReadToEndAsync();
-        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var deadline = new CancellationTokenSource(timeout);
         try { await process.WaitForExitAsync(deadline.Token); }
         catch (OperationCanceledException)
         {
             process.Kill(true);
             await process.WaitForExitAsync();
-            throw new IOException("ADB did not respond within 10 seconds.");
+            throw new IOException($"ADB did not respond within {timeout.TotalSeconds:0} seconds.");
         }
         string output = await stdout;
         string error = await stderr;
@@ -58,6 +61,30 @@ internal sealed class AdbBridge(string executable, string serial, int port, bool
             throw new IOException($"ADB: {detail}");
         }
         return output;
+    }
+
+    public async Task OpenReceiverAsync(string uri)
+    {
+        string encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(uri)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        // Base64url contains no shell metacharacters; the raw pairing URI never enters Android shell parsing.
+        string output = await RunCommandAsync(executable, TimeSpan.FromSeconds(30), ["-s", serial, "shell", "am", "start", "-W", "-n",
+            "io.github.eoftisreal.dis/.UsbConnectActivity", "--es", "dis_pairing_b64", encoded]);
+        if (output.Contains("Error", StringComparison.OrdinalIgnoreCase) || output.Contains("does not exist", StringComparison.OrdinalIgnoreCase))
+            throw new IOException("Install the updated Dis Android app first, then connect USB again.");
+    }
+
+    public static async Task InstallReceiverAsync(string executable, string requestedSerial, string apk)
+    {
+        executable = AdbLocator.Resolve(executable);
+        var args = new List<string>();
+        if (!string.IsNullOrWhiteSpace(requestedSerial)) { args.Add("-s"); args.Add(requestedSerial.Trim()); }
+        args.AddRange(["install", "-r", apk]);
+        string output;
+        try { output = await RunCommandAsync(executable, TimeSpan.FromSeconds(90), [.. args]); }
+        catch (IOException e) when (e.Message.Contains("INSTALL_FAILED_UPDATE_INCOMPATIBLE", StringComparison.Ordinal))
+        { throw new IOException("Uninstall the old Dis preview on the phone once, then press Install/update Android app again.", e); }
+        if (!output.Contains("Success", StringComparison.Ordinal))
+            throw new IOException("Android installation failed. If this is an older preview signed with a different key, uninstall that preview on the phone once, then install again. " + output.Trim());
     }
 
     private static Process StartProcess(ProcessStartInfo start)

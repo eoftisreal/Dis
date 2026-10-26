@@ -1,78 +1,40 @@
-# Dis protocol v1
+# Dis protocol — v1 compatibility and v2 streaming
 
-Each connection is a TCP stream protected by TLS 1.2 or TLS 1.3. Android verifies SHA-256 of the exact server certificate against the connection link. This explicit certificate identity replaces public-CA/hostname authentication for the self-signed session certificate. Never accept an unverified certificate to work around a connection failure.
-
-## Envelope
-
-All multibyte values are big endian. The header is 16 bytes.
-
-| Offset | Size | Field |
-| --- | --- | --- |
-| 0 | 4 | ASCII `DIS1` |
-| 4 | 1 | Message type |
-| 5 | 1 | Flags, must be zero |
-| 6 | 2 | Reserved, must be zero |
-| 8 | 4 | Unsigned payload length |
-| 12 | 4 | Unsigned sequence number |
-
-Unknown magic, flags, types, invalid lengths, truncated packets, and unsupported session versions terminate the connection. Validate before allocating payload memory. Each direction must serialize complete packet writes. TCP fragmentation and coalescing must not change message boundaries.
-
-| Type | Value | Payload |
-| --- | --- | --- |
-| Hello | 1 | UTF-8 JSON, 2–4096 bytes |
-| Config | 2 | UTF-8 JSON, 2–4096 bytes |
-| Frame | 3 | 13 bytes–8 MiB total |
-| Input | 4 | Exactly 24 bytes |
-| Ack | 5 | Empty; sequence acknowledges Frame |
-| Ping | 6 | Exactly 8 bytes, opaque echo data |
-| Pong | 7 | Exactly 8 bytes, unchanged echo data |
-| Error | 8 | UTF-8 JSON, 2–4096 bytes |
+All packets retain the 16-byte DIS1 big-endian envelope: magic (4), type (1), zero flags (1), zero reserved (2), payload length (4), sequence (4). TLS 1.2/1.3 authenticates the exact server certificate using SHA-256 from the pairing link. A random 256-bit session token authenticates the receiver. Headers, payload limits, and pointer values are validated before use.
 
 ## Negotiation
 
-Android sends Hello with sequence 0:
+Hello carries version, token, maxWidth, maxHeight, fps, and codec. Version 1 supports JPEG only. Version 2 supports h264 or jpeg, up to a 1920-by-1920 bounding box with a 1920-by-1080 maximum pixel area, including portrait. The host selects an even-sized aspect-preserving mode within the selected quality budget. Config returns the negotiated version, codec, width, height, fps, input/pen availability, and actual encoder label.
 
-```json
-{"version":1,"token":"64 hexadecimal characters","maxWidth":1920,"maxHeight":1080,"fps":30,"codec":"jpeg"}
-```
+For H.264 the host sends CodecConfig (type 9, sequence 0, 8–65536 bytes) immediately after Config: Annex B SPS and PPS NAL units with start codes. The receiver separates these into MediaCodec csd-0/csd-1. Frame packets then carry complete Annex B access units. Baseline profile, no B pictures, and low-latency settings are requested from the Media Foundation encoder. Hardware support is discovered, not assumed.
 
-The host authenticates the 32-byte token with constant-time comparison, validates capabilities, and allows one authenticated display session. Handshake/Hello deadline: 10 seconds. At most four pending handshakes are accepted. A second authenticated device receives an Error. There is no account, remote relay, password recovery, or cloud dependency.
+## Message types and limits
 
-Host Config has sequence 0:
-
-```json
-{"version":1,"codec":"jpeg","width":1920,"height":1080,"fps":30,"input":true,"pen":true}
-```
-
-The source monitor's aspect ratio is preserved without upscaling. v1 receiver limits output to 1920×1080 and 30 fps; portrait screens fit inside that bounding box. `pen` indicates that Windows synthetic pen injection initialized, not that every application accepts pressure.
-
-## Frames and backpressure
-
-Frame payload: width (u16), height (u16), host monotonic capture timestamp in microseconds (i64), then a complete JPEG. JPEG dimensions must match the header and negotiated Config before allocating its decoded bitmap. No remote timestamps are treated as end-to-end latency without clock synchronization.
-
-Frame sequences start at 1 and wrap modulo 2^32. Android acknowledges after consuming the frame, including deliberate discard during a surface transition. The host never sends the next frame until that exact sequence is acknowledged. An acknowledgement for a stale or future frame terminates the session. The next capture is fresh; there is no queue of old frames. Ack deadline: 8 seconds. This favors bounded buffering over maximum high-latency-link throughput.
-
-## Input
-
-| Offset | Size | Meaning |
+| Type | Number | Payload |
 | --- | --- | --- |
-| 0 | 1 | Kind: mouse 0, pen 1 |
-| 1 | 1 | Action: down 0, move 1, up 2, cancel 3, hover 4 |
-| 2 | 2 | Buttons: bit 0 pen barrel, bit 1 eraser |
-| 4 | 4 | x, float32 normalized 0…1 |
-| 8 | 4 | y, float32 normalized 0…1 |
-| 12 | 4 | pressure, float32 normalized 0…1 |
-| 16 | 4 | tiltX, float32 −90…90 degrees |
-| 20 | 4 | tiltY, float32 −90…90 degrees |
+| Hello | 1 | JSON 2–4096 bytes |
+| Config | 2 | JSON 2–4096 bytes |
+| Frame | 3 | 13 bytes–8 MiB: width u16, height u16, timestamp i64, encoded data |
+| Input | 4 | 24-byte pointer data |
+| Ack | 5 | Empty; envelope sequence acknowledges a consumed frame |
+| Ping / Pong | 6 / 7 | 8 opaque bytes |
+| Error | 8 | JSON 2–4096 bytes |
+| CodecConfig | 9 | Annex B parameter sets, 8–65536 bytes |
 
-All floats must be finite. Letterboxed areas do not initiate input. Coordinates map to the chosen monitor, including negative desktop origins. Input packets are ignored when host input is disabled, but malformed input is still rejected. Finger input maps one primary contact to a mouse; multi-touch gestures are not implemented. Pen pressure/tilt use Windows synthetic pointer input. Barrel/eraser bits apply only to pen input.
+Frame timestamps use the host's monotonic microsecond clock and are retained through Media Foundation and MediaCodec. They identify decoder output for acknowledgements; clocks on different devices are not subtracted to claim end-to-end latency.
 
-The Android input queue is bounded to 128 packets. Overflow closes the session rather than silently losing an up event. The host releases held input on session teardown. The host closes peers exceeding 2000 received packets/second. Reconnection creates a new input session; it never continues a held stroke.
+## Bounded pipelining
 
-## Connection links
+Version 1 permits one outstanding frame; version 2 permits two. A frame slot is reserved before sending. Only an acknowledgement matching an outstanding sequence releases that slot. Wrong/stale acknowledgements are rejected. The sender waits when the window is full; it never queues an unbounded series of old frames or drops encoded H.264 reference pictures. Raw captures that cannot be submitted to a busy asynchronous encoder can be skipped safely.
 
-`dis://<Windows-IP>:<port>?fp=<64-hex-SHA256>&token=<64-hex-secret>`
+For JPEG, ACK follows frame consumption. For H.264, ACK follows release of decoder output to its Surface; this is not a promise of exact physical presentation time. The decoder's input/output queues are bounded and a failed/surface-lost session reconnects. A frame-slot/send timeout closes a stalled peer.
 
-For ADB reverse, the IP is `127.0.0.1` on Android and forwards to Windows loopback. Stopping/restarting the server creates a fresh certificate and token. The receiver does not persist the link or accept incoming deep links. Tokens are never written to application logs.
+## Pointer input
 
-Future incompatible wire changes require a new magic/version and explicit negotiation. Hardware codec support must specify access-unit boundaries, codec configuration, color metadata, decoder recovery, and keyframe requests before being advertised.
+The 24-byte Input payload is kind (u8: mouse 0 / pen 1), action (u8: down 0 / move 1 / up 2 / cancel 3 / hover 4), buttons (u16: barrel bit 0 / eraser bit 1), then five float32 values: x, y, pressure (0…1), tiltX and tiltY (−90…90). All floats must be finite. Coordinates map through the aspect-correct display view to the selected Windows monitor. The input queue is bounded; session teardown releases held mouse/pen contacts.
+
+## USB pairing and rotation
+
+After creating its ADB reverse tunnel and loopback TLS listener, Windows launches the permission-protected UsbConnectActivity via authorized ADB shell. The URI is base64url-encoded before Android shell argument transport, so its ampersands are never shell operators. The activity validates it and transfers it inside the app process; the public launcher activity does not accept arbitrary pairing extras. USB debugging authorization is still required.
+
+Ordinary Stop revokes the certificate/token session. Applying a Windows orientation change preserves that session only across its controlled server restart, avoiding another manual pairing. Network pairing remains manual in this milestone.
