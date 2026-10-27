@@ -49,3 +49,5 @@ artifacts\Dis-Complete\Dis.exe --display-capture-check
 ```
 
 These checks require the already installed display driver and administrator approval. They temporarily activate the virtual monitor. The lifecycle check tests attach, detach, reconnect, and hiding while preserving physical display layouts. The capture check verifies downscaled screen quadrants and encodes 24 pictures. Results are written under `artifacts`. Regular builds do not run these interactive checks.
+
+GitHub CI does not cache or commit private signing keys. Its current receiver APK uses a temporary preview key, so updating from an APK built by another CI run can require uninstalling the old receiver first. Local builds preserve their existing private .tools/signing/Dis-preview.keystore and update normally. A stable distributed signing identity requires a separately configured secure signing service or encrypted CI secret.
