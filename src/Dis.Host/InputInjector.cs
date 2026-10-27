@@ -66,7 +66,7 @@ internal sealed class InputInjector : IDisposable
                 break;
             case PointerAction.Cancel:
                 if (!penDown && !penInRange) return;
-                flags = penDown ? 0x40000 | 0x8000 : 0x20000;
+                flags = penDown ? 0x40000u | 0x8000u : 0x20000u;
                 penDown = false; penInRange = false;
                 break;
         }
