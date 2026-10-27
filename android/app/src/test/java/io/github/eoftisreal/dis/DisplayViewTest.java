@@ -34,11 +34,16 @@ public final class DisplayViewTest {
         view=new DisplayView(controller.get());
         frame.addView(view,new FrameLayout.LayoutParams(400,200));
         controller.get().setContentView(frame);
-        frame.layout(0,0,400,200);
-        view.layout(0,0,400,200);
         view.setVideoGeometry(400,200);
         view.configure(true,true,packets::add);
         shadowOf(Looper.getMainLooper()).idle();
+        frame.measure(android.view.View.MeasureSpec.makeMeasureSpec(400,android.view.View.MeasureSpec.EXACTLY),
+            android.view.View.MeasureSpec.makeMeasureSpec(200,android.view.View.MeasureSpec.EXACTLY));
+        frame.layout(0,0,400,200);
+        view.updateVideoLayout();
+        view.layout(0,0,400,200);
+        assertEquals(400,view.getWidth());
+        assertEquals(200,view.getHeight());
     }
     @After public void detachView() { controller.pause().stop().destroy(); }
 

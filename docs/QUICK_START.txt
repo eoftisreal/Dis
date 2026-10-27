@@ -1,4 +1,4 @@
-DIS 0.2 PREVIEW - WINDOWS + ANDROID
+DIS 0.3 PREVIEW - WINDOWS + ANDROID
 
 Extract this entire folder. Keep Dis.exe, Dis.Codec.dll, Dis.apk and the driver folder together.
 
@@ -22,6 +22,12 @@ SMOOTHNESS
 Start with 720p smooth and 60 fps. The live status identifies H.264 hardware, H.264 software, or JPEG fallback.
 H.264 hardware availability depends on the GPU driver. A 60 fps target is not a promise that every device reaches 60 fps.
 Try 1080p detailed after confirming performance. Keep Ethernet/tethering enabled; Dis does not change network routes.
+Android status identifies its decoder and low-latency/realtime/compatibility configuration.
+
+PEN INPUT
+On phones/tablets that recognize a stylus, hover, pressure, tilt, barrel button and eraser are forwarded when input is enabled.
+An active/hovering pen suppresses finger touches. Moving away from the screen restores ordinary finger control.
+Use the updated Windows app with the updated Android receiver for complete hover-exit handling.
 
 NETWORK MODE
 Select the intended Ethernet/Wi-Fi/tethering adapter. Manual network pairing remains under Advanced.

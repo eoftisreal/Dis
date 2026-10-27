@@ -9,6 +9,12 @@
 
 The [verification record](STATUS.md) includes virtual-display installation, portrait rotation, actual captured pixels, and independent H.264 decoding on a Windows VM. Real-device behavior and comparative performance remain separate acceptance gates.
 
+## Added in the 0.3 preview
+
+- Guarded Android realtime/low-latency configuration, a compatibility retry, decoder identification and phone-clock Surface scheduling.
+- Stylus hover/range cleanup, finger-to-pen takeover, palm suppression around a recognized pen, historical pressure samples and bounded movement coalescing.
+- A reproducible static analysis of the supplied SuperDisplay 1.2.22 APK. Its separate cursor layer, multi-touch/keyboard channels and per-device profiles inform the next milestones below; those features are not implemented by the research report itself.
+
 ## P0: prove the basic product on hardware
 
 1. Validate the signed VirtualDrivers package on physical PCs and document supported Windows/GPU combinations. Development of the original Dis IddCx driver still requires matching SDK/WDK verification and a separate signing plan.

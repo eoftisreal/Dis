@@ -1,0 +1,729 @@
+{
+  "filename": "SuperDisplay (com.kelocube.mirrorclient) [v.1.2.22].apk",
+  "bytes": 8319751,
+  "sha256": "c44b5c9de1e551904110e8475a0e1b01748ea239e30584cbfab5b0e05e6792fc",
+  "zip_entry_count": 1243,
+  "binary_manifest_sha256": "fb4d743732a43e80baf14be88a27fcdb79808929db62d305d166febdab65e716",
+  "native_libraries": [],
+  "dex": {
+    "classes.dex": {
+      "bytes": 9584032,
+      "sha256": "ef502c84879f79d90f7b34e2b9bf54ebea1da174e938bc0c392f3a55d18e125b",
+      "dex_version": "035",
+      "string_count": 64270,
+      "method_reference_count": 65419,
+      "class_count": 8161,
+      "application_class_count": 365,
+      "focus_classes": [
+        {
+          "descriptor": "Lcom/kelocube/mirrorclient/AOAPPipe;",
+          "class_def_offset": 1744296
+        },
+        {
+          "descriptor": "Lcom/kelocube/mirrorclient/Transport;",
+          "class_def_offset": 1744328
+        },
+        {
+          "descriptor": "Lcom/kelocube/mirrorclient/AOAPTransport;",
+          "class_def_offset": 1744360
+        },
+        {
+          "descriptor": "Lcom/kelocube/mirrorclient/AOAPTransportListener;",
+          "class_def_offset": 1744648
+        },
+        {
+          "descriptor": "Lcom/kelocube/mirrorclient/Decoder;",
+          "class_def_offset": 1745704
+        },
+        {
+          "descriptor": "Lcom/kelocube/mirrorclient/AsyncDecoder;",
+          "class_def_offset": 1745736
+        },
+        {
+          "descriptor": "Lcom/kelocube/mirrorclient/CanvasScaler;",
+          "class_def_offset": 1746728
+        },
+        {
+          "descriptor": "Lcom/kelocube/mirrorclient/Input;",
+          "class_def_offset": 1747784
+        },
+        {
+          "descriptor": "Lcom/kelocube/mirrorclient/MirrorActivity;",
+          "class_def_offset": 1748072
+        },
+        {
+          "descriptor": "Lcom/kelocube/mirrorclient/MirrorClient;",
+          "class_def_offset": 1748456
+        },
+        {
+          "descriptor": "Lcom/kelocube/mirrorclient/MirrorSession;",
+          "class_def_offset": 1749192
+        },
+        {
+          "descriptor": "Lcom/kelocube/mirrorclient/Pointer;",
+          "class_def_offset": 1749448
+        },
+        {
+          "descriptor": "Lcom/kelocube/mirrorclient/PrefsKt;",
+          "class_def_offset": 1749576
+        },
+        {
+          "descriptor": "Lcom/kelocube/mirrorclient/SyncDecoder;",
+          "class_def_offset": 1750312
+        },
+        {
+          "descriptor": "Lcom/kelocube/mirrorclient/TCPTransport;",
+          "class_def_offset": 1750344
+        },
+        {
+          "descriptor": "Lcom/kelocube/mirrorclient/TCPTransportListener;",
+          "class_def_offset": 1750536
+        },
+        {
+          "descriptor": "Lcom/kelocube/mirrorclient/TransportKt;",
+          "class_def_offset": 1751208
+        },
+        {
+          "descriptor": "Lcom/kelocube/mirrorclient/YUVVideoStream;",
+          "class_def_offset": 1751912
+        }
+      ],
+      "selected_api_references": [
+        {
+          "owner": "Landroid/hardware/usb/UsbManager;",
+          "method": "getAccessoryList",
+          "method_id": 1807
+        },
+        {
+          "owner": "Landroid/hardware/usb/UsbManager;",
+          "method": "openAccessory",
+          "method_id": 1808
+        },
+        {
+          "owner": "Landroid/hardware/usb/UsbManager;",
+          "method": "requestPermission",
+          "method_id": 1809
+        },
+        {
+          "owner": "Landroid/media/MediaCodec;",
+          "method": "configure",
+          "method_id": 1992
+        },
+        {
+          "owner": "Landroid/media/MediaCodec;",
+          "method": "createDecoderByType",
+          "method_id": 1993
+        },
+        {
+          "owner": "Landroid/media/MediaCodec;",
+          "method": "dequeueInputBuffer",
+          "method_id": 1994
+        },
+        {
+          "owner": "Landroid/media/MediaCodec;",
+          "method": "dequeueOutputBuffer",
+          "method_id": 1995
+        },
+        {
+          "owner": "Landroid/media/MediaCodec;",
+          "method": "getCodecInfo",
+          "method_id": 1996
+        },
+        {
+          "owner": "Landroid/media/MediaCodec;",
+          "method": "getInputBuffer",
+          "method_id": 1997
+        },
+        {
+          "owner": "Landroid/media/MediaCodec;",
+          "method": "getInputBuffers",
+          "method_id": 1998
+        },
+        {
+          "owner": "Landroid/media/MediaCodec;",
+          "method": "getOutputFormat",
+          "method_id": 1999
+        },
+        {
+          "owner": "Landroid/media/MediaCodec;",
+          "method": "queueInputBuffer",
+          "method_id": 2000
+        },
+        {
+          "owner": "Landroid/media/MediaCodec;",
+          "method": "release",
+          "method_id": 2001
+        },
+        {
+          "owner": "Landroid/media/MediaCodec;",
+          "method": "releaseOutputBuffer",
+          "method_id": 2002
+        },
+        {
+          "owner": "Landroid/media/MediaCodec;",
+          "method": "reset",
+          "method_id": 2003
+        },
+        {
+          "owner": "Landroid/media/MediaCodec;",
+          "method": "setCallback",
+          "method_id": 2004
+        },
+        {
+          "owner": "Landroid/media/MediaCodec;",
+          "method": "start",
+          "method_id": 2005
+        },
+        {
+          "owner": "Landroid/media/MediaCodec;",
+          "method": "stop",
+          "method_id": 2006
+        },
+        {
+          "owner": "Landroid/media/MediaCodecInfo$CodecCapabilities;",
+          "method": "getVideoCapabilities",
+          "method_id": 2007
+        },
+        {
+          "owner": "Landroid/media/MediaCodecInfo$CodecCapabilities;",
+          "method": "isFeatureSupported",
+          "method_id": 2008
+        },
+        {
+          "owner": "Landroid/media/MediaCodecInfo$VideoCapabilities;",
+          "method": "isSizeSupported",
+          "method_id": 2009
+        },
+        {
+          "owner": "Landroid/media/MediaFormat;",
+          "method": "createVideoFormat",
+          "method_id": 2030
+        },
+        {
+          "owner": "Landroid/media/MediaFormat;",
+          "method": "getInteger",
+          "method_id": 2031
+        },
+        {
+          "owner": "Landroid/media/MediaFormat;",
+          "method": "setFeatureEnabled",
+          "method_id": 2032
+        },
+        {
+          "owner": "Landroid/media/MediaFormat;",
+          "method": "setInteger",
+          "method_id": 2033
+        },
+        {
+          "owner": "Ljava/nio/channels/ServerSocketChannel;",
+          "method": "accept",
+          "method_id": 64389
+        },
+        {
+          "owner": "Ljava/nio/channels/ServerSocketChannel;",
+          "method": "open",
+          "method_id": 64390
+        },
+        {
+          "owner": "Ljava/nio/channels/ServerSocketChannel;",
+          "method": "socket",
+          "method_id": 64391
+        },
+        {
+          "owner": "Ljava/nio/channels/SocketChannel;",
+          "method": "close",
+          "method_id": 64392
+        },
+        {
+          "owner": "Ljava/nio/channels/SocketChannel;",
+          "method": "socket",
+          "method_id": 64393
+        },
+        {
+          "owner": "Lnet/jpountz/lz4/LZ4Factory;",
+          "method": "fastDecompressor",
+          "method_id": 65237
+        },
+        {
+          "owner": "Lnet/jpountz/lz4/LZ4Factory;",
+          "method": "fastestJavaInstance",
+          "method_id": 65238
+        },
+        {
+          "owner": "Lnet/jpountz/lz4/LZ4FastDecompressor;",
+          "method": "decompress",
+          "method_id": 65239
+        }
+      ],
+      "selected_string_markers": [
+        "video/avc",
+        "low-latency",
+        "operating-rate",
+        "max-input-size",
+        "KELOCUBE_MIRR_",
+        "pref_force_software_encoder"
+      ]
+    },
+    "classes2.dex": {
+      "bytes": 4218816,
+      "sha256": "812655fdd6445929185b0a00c6ba385d170a427efeaa47a1a33c30afc7dd45cd",
+      "dex_version": "035",
+      "string_count": 27009,
+      "method_reference_count": 25842,
+      "class_count": 2633,
+      "application_class_count": 0,
+      "focus_classes": [],
+      "selected_api_references": [
+        {
+          "owner": "Lnet/jpountz/lz4/LZ4Factory;",
+          "method": "<init>",
+          "method_id": 24785
+        },
+        {
+          "owner": "Lnet/jpountz/lz4/LZ4Factory;",
+          "method": "classInstance",
+          "method_id": 24786
+        },
+        {
+          "owner": "Lnet/jpountz/lz4/LZ4Factory;",
+          "method": "decompressor",
+          "method_id": 24787
+        },
+        {
+          "owner": "Lnet/jpountz/lz4/LZ4Factory;",
+          "method": "fastCompressor",
+          "method_id": 24788
+        },
+        {
+          "owner": "Lnet/jpountz/lz4/LZ4Factory;",
+          "method": "fastDecompressor",
+          "method_id": 24789
+        },
+        {
+          "owner": "Lnet/jpountz/lz4/LZ4Factory;",
+          "method": "fastestInstance",
+          "method_id": 24790
+        },
+        {
+          "owner": "Lnet/jpountz/lz4/LZ4Factory;",
+          "method": "fastestJavaInstance",
+          "method_id": 24791
+        },
+        {
+          "owner": "Lnet/jpountz/lz4/LZ4Factory;",
+          "method": "highCompressor",
+          "method_id": 24792
+        },
+        {
+          "owner": "Lnet/jpountz/lz4/LZ4Factory;",
+          "method": "highCompressor",
+          "method_id": 24793
+        },
+        {
+          "owner": "Lnet/jpountz/lz4/LZ4Factory;",
+          "method": "instance",
+          "method_id": 24794
+        },
+        {
+          "owner": "Lnet/jpountz/lz4/LZ4Factory;",
+          "method": "main",
+          "method_id": 24795
+        },
+        {
+          "owner": "Lnet/jpountz/lz4/LZ4Factory;",
+          "method": "nativeInstance",
+          "method_id": 24796
+        },
+        {
+          "owner": "Lnet/jpountz/lz4/LZ4Factory;",
+          "method": "safeDecompressor",
+          "method_id": 24797
+        },
+        {
+          "owner": "Lnet/jpountz/lz4/LZ4Factory;",
+          "method": "safeInstance",
+          "method_id": 24798
+        },
+        {
+          "owner": "Lnet/jpountz/lz4/LZ4Factory;",
+          "method": "toString",
+          "method_id": 24799
+        },
+        {
+          "owner": "Lnet/jpountz/lz4/LZ4Factory;",
+          "method": "unknownSizeDecompressor",
+          "method_id": 24800
+        },
+        {
+          "owner": "Lnet/jpountz/lz4/LZ4Factory;",
+          "method": "unsafeInstance",
+          "method_id": 24801
+        },
+        {
+          "owner": "Lnet/jpountz/lz4/LZ4FastDecompressor;",
+          "method": "<init>",
+          "method_id": 24802
+        },
+        {
+          "owner": "Lnet/jpountz/lz4/LZ4FastDecompressor;",
+          "method": "decompress",
+          "method_id": 24803
+        },
+        {
+          "owner": "Lnet/jpountz/lz4/LZ4FastDecompressor;",
+          "method": "decompress",
+          "method_id": 24804
+        },
+        {
+          "owner": "Lnet/jpountz/lz4/LZ4FastDecompressor;",
+          "method": "decompress",
+          "method_id": 24805
+        },
+        {
+          "owner": "Lnet/jpountz/lz4/LZ4FastDecompressor;",
+          "method": "decompress",
+          "method_id": 24806
+        },
+        {
+          "owner": "Lnet/jpountz/lz4/LZ4FastDecompressor;",
+          "method": "decompress",
+          "method_id": 24807
+        },
+        {
+          "owner": "Lnet/jpountz/lz4/LZ4FastDecompressor;",
+          "method": "decompress",
+          "method_id": 24808
+        },
+        {
+          "owner": "Lnet/jpountz/lz4/LZ4FastDecompressor;",
+          "method": "decompress",
+          "method_id": 24809
+        },
+        {
+          "owner": "Lnet/jpountz/lz4/LZ4FastDecompressor;",
+          "method": "toString",
+          "method_id": 24810
+        }
+      ],
+      "selected_string_markers": []
+    }
+  },
+  "limits": [
+    "The uploader supplied this artifact; publisher authenticity and APK signature trust have not been verified.",
+    "API references and decompiled locations are static evidence, not proof of runtime execution or performance.",
+    "The optional JADX folder must be generated from this same APK; source hashes make that output reproducible but do not independently bind it to the APK.",
+    "The Windows service, driver implementation, USB descriptor behavior and hardware latency are outside this APK inventory."
+  ],
+  "jadx": {
+    "decoded_manifest": {
+      "sha256": "711580aef0074b27ca9cd985f5ba4c3200a388f368a93d4234cf3bce780777a2",
+      "package": "com.kelocube.mirrorclient",
+      "version_name": "1.2.22",
+      "version_code": "67",
+      "min_sdk": "21",
+      "target_sdk": "34",
+      "permissions": [
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.ACCESS_WIFI_STATE",
+        "android.permission.INTERNET",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION",
+        "com.android.vending.CHECK_LICENSE",
+        "com.samsung.android.service.aircommand.permission.ACCESS_AIRCOMMAND",
+        "com.android.vending.BILLING",
+        "com.kelocube.mirrorclient.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+      ],
+      "activities": [
+        {
+          "name": "com.kelocube.mirrorclient.ui.MainActivity",
+          "exported": "true",
+          "configChanges": null,
+          "launchMode": "singleTask"
+        },
+        {
+          "name": "com.kelocube.mirrorclient.IntentReceiverActivity",
+          "exported": "true",
+          "configChanges": null,
+          "launchMode": null
+        },
+        {
+          "name": "com.kelocube.mirrorclient.MirrorActivity",
+          "exported": null,
+          "configChanges": "screenSize|orientation|navigation|keyboardHidden|keyboard",
+          "launchMode": "singleTop"
+        },
+        {
+          "name": "com.kelocube.mirrorclient.ui.SettingsActivity",
+          "exported": null,
+          "configChanges": null,
+          "launchMode": null
+        },
+        {
+          "name": "com.kelocube.mirrorclient.ui.MyLibsActivity",
+          "exported": null,
+          "configChanges": null,
+          "launchMode": null
+        },
+        {
+          "name": "com.kelocube.mirrorclient.ui.EditActionMenuActivity",
+          "exported": null,
+          "configChanges": null,
+          "launchMode": null
+        },
+        {
+          "name": "com.kelocube.mirrorclient.ui.CalibrateStylusActivity",
+          "exported": null,
+          "configChanges": null,
+          "launchMode": null
+        }
+      ]
+    },
+    "decompiled_source_evidence": [
+      {
+        "path": "sources/com/kelocube/mirrorclient/AsyncDecoder.java",
+        "sha256": "fcd88dac226e3ec1e970f6e25cfdcc7fdbbe4a54b54f7bd54e63ff2c675e7856",
+        "incomplete_method_count": 0,
+        "locations": {
+          "createDecoderByType": [
+            43,
+            44
+          ],
+          "setCallback": [
+            186
+          ],
+          "releaseOutputBuffer": [
+            79
+          ],
+          "operating-rate": [
+            166
+          ],
+          "low-latency": [
+            171,
+            172
+          ],
+          "isSizeSupported": [
+            180
+          ]
+        }
+      },
+      {
+        "path": "sources/com/kelocube/mirrorclient/SyncDecoder.java",
+        "sha256": "d3903b73fa103c29f8a87aec029ff6a867d5afdd2287f34292922b11f29e261d",
+        "incomplete_method_count": 0,
+        "locations": {
+          "dequeueOutputBuffer": [
+            80
+          ],
+          "releaseOutputBuffer": [
+            82
+          ],
+          "operating-rate": [
+            191
+          ]
+        }
+      },
+      {
+        "path": "sources/com/kelocube/mirrorclient/YUVVideoStream.java",
+        "sha256": "ccd854492b3575b4c0f18280cb30076e66896e18a790b3cd2270298547be5a43",
+        "incomplete_method_count": 0,
+        "locations": {
+          "new AsyncDecoder": [
+            35
+          ],
+          "new SyncDecoder": [
+            35
+          ],
+          "surfaceCreated": [
+            125
+          ],
+          "surfaceDestroyed": [
+            133
+          ]
+        }
+      },
+      {
+        "path": "sources/com/kelocube/mirrorclient/Transport.java",
+        "sha256": "52a00a87a3beb501a8ffa7fb33128dd9c4fbd601475cd5f535506344a61ca895",
+        "incomplete_method_count": 0,
+        "locations": {
+          "SUPPORTED_HOST_VERSIONS": [
+            168,
+            175
+          ],
+          "ByteOrder.LITTLE_ENDIAN": [
+            193
+          ],
+          "readFromSocket(buffer, 3)": [
+            376
+          ],
+          "getShort()": [
+            379
+          ],
+          "getOnData().invoke": [
+            408
+          ]
+        }
+      },
+      {
+        "path": "sources/com/kelocube/mirrorclient/TransportKt.java",
+        "sha256": "8caeaeaa352f173ee8e6c1568489fcc6deaf7966b9189de71535208fbdfe4af3",
+        "incomplete_method_count": 0,
+        "locations": {
+          "HANDSHAKE_BASE": [
+            10
+          ],
+          "SUPPORTED_HOST_VERSIONS": [
+            15
+          ],
+          "TIMEOUT_": [
+            16,
+            17
+          ]
+        }
+      },
+      {
+        "path": "sources/com/kelocube/mirrorclient/TCPTransportListener.java",
+        "sha256": "5a996a725d72be662bcdbdc39a7d4c60c176e82e4ef0d3bd89ac72c5a7201dbf",
+        "incomplete_method_count": 0,
+        "locations": {
+          "ServerSocketChannel.open": [
+            65
+          ],
+          "bind(new InetSocketAddress": [
+            66
+          ]
+        }
+      },
+      {
+        "path": "sources/com/kelocube/mirrorclient/AOAPTransportListener.java",
+        "sha256": "9ca0cc9af6457b8cea94bf9ac7a9d3ebf9cd18739cbef986d7d3d351c9ced6ca",
+        "incomplete_method_count": 0,
+        "locations": {
+          "openAccessory": [
+            136,
+            139,
+            140,
+            296,
+            303,
+            314
+          ],
+          "getAccessoryList": [
+            298
+          ],
+          "UsbManager": [
+            9,
+            44,
+            70,
+            71
+          ]
+        }
+      },
+      {
+        "path": "sources/com/kelocube/mirrorclient/MirrorSession.java",
+        "sha256": "a48d4b974ecc6200716358b8cb4030d0c07eb426e969bf00a9df7b5b42421f9b",
+        "incomplete_method_count": 0,
+        "locations": {
+          "onFrameDone()": [
+            149,
+            160,
+            364
+          ],
+          "DataType.FrameDone": [
+            369
+          ],
+          "PREF_FRAMERATE": [
+            408
+          ],
+          "PREF_RESOLUTION": [
+            414
+          ],
+          "DataType.Pen": [
+            220
+          ],
+          "DataType.Keyboard": [
+            235
+          ]
+        }
+      },
+      {
+        "path": "sources/com/kelocube/mirrorclient/Input.java",
+        "sha256": "b3d5c359a4154937b2287cb3b97b51175bf5085dfd14a9fc20c547a2f1d19a4f",
+        "incomplete_method_count": 0,
+        "locations": {
+          "onHover(": [
+            633
+          ],
+          "onTouch(": [
+            647
+          ],
+          "getPressure(": [
+            223,
+            229,
+            233,
+            342,
+            348,
+            352
+          ],
+          "getPointerCount(": [
+            419
+          ],
+          "getAxisValue(": [
+            234,
+            235,
+            353,
+            354
+          ]
+        }
+      },
+      {
+        "path": "sources/com/kelocube/mirrorclient/Pointer.java",
+        "sha256": "01b9cee60de54a53b644a187da9f892663970d024f3083f883e62ad15a17175b",
+        "incomplete_method_count": 0,
+        "locations": {
+          "fastestJavaInstance": [
+            109
+          ],
+          "lz4.decompress": [
+            307
+          ],
+          "onShapeData(": [
+            293
+          ],
+          "onMoveData(": [
+            285
+          ],
+          "glTexSubImage2D": [
+            232
+          ]
+        }
+      },
+      {
+        "path": "sources/com/kelocube/mirrorclient/MirrorActivity.java",
+        "sha256": "d5b27479a9498d37da7c6ec98a0ddae27b75c497c28efb1543fb4b7ae45a0692",
+        "incomplete_method_count": 0,
+        "locations": {
+          "onConfigurationChanged(": [
+            147,
+            149
+          ]
+        }
+      },
+      {
+        "path": "sources/com/kelocube/mirrorclient/PrefsKt.java",
+        "sha256": "8b5e03b766ca044035a23d4cba850368fcf25c8fe43c5fc81b12eb90edd25092",
+        "incomplete_method_count": 0,
+        "locations": {
+          "APP_DEFAULT_PORT": [
+            10
+          ],
+          "PREF_FORCE_SOFTWARE_ENCODER": [
+            16
+          ],
+          "PREF_FRAMERATE_DEFAULT": [
+            18
+          ]
+        }
+      }
+    ]
+  }
+}

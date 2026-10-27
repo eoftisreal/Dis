@@ -1,6 +1,6 @@
 # Dis — Windows to Android second display
 
-Dis 0.2 preview adds a real extended-display setup, automatic USB connection, H.264 streaming, and orientation controls. Windows 11 x64 host; Android 9+ receiver.
+Dis 0.3 preview builds on the working second-display/automatic-USB baseline with guarded Android decoder tuning, pen hover and better input queueing. Windows 11 x64 host; Android 9+ receiver.
 
 ## Use the complete preview
 
@@ -21,9 +21,13 @@ Start with **720p · smooth** and a 60 fps target. Use **1080p · detailed** aft
 
 **Windows orientation** changes the selected Windows monitor to landscape, portrait, or a flipped mode. Applying it restarts the stream with the same pairing session and automatically reconnects USB. The Android **Auto / Landscape / Portrait** selector controls the phone's own orientation separately. Portrait streams preserve aspect ratio and can use a full-height video mode.
 
+The receiver requests realtime decoder operation at the negotiated frame rate and supported low-latency decoding, with a compatibility retry if optional hints fail. Android status shows its actual decoder name/configuration. Frames use the phone's clock for Surface presentation.
+
+With a recognized stylus, hover, pressure, tilt, eraser and barrel-button state are forwarded. Pen input can take over and cancel an existing finger drag; touch is suppressed while that pen is hovering. Historical pen samples are retained in normal operation. When input backs up, repeated movement is coalesced while preserving contact and button transitions. A finger on an ordinary touchscreen remains mouse-style input; this update does not add Windows multi-touch or Wintab.
+
 ## What is and is not established
 
-This is an independent developing application, not recovered SuperDisplay source. Its official Windows installer was examined statically; its Android APK and private protocol were not reverse engineered. No SuperDisplay code or assets are included.
+This is an independent developing application, not recovered SuperDisplay source. The official Windows installer and a user-supplied Android 1.2.22 APK were examined statically. The [Android reference analysis](docs/SUPERDISPLAY_APK_RESEARCH.md) records verified code findings, implementation decisions, provenance and remaining gaps. No SuperDisplay code or assets are included.
 
 The original source-only Dis IddCx driver remains under `driver/DisIdd` for development. Normal second-display setup now uses the separately attributed, signed VirtualDrivers package instead. Setup verifies its pinned SHA-256 and catalog signature; it does not disable signature enforcement, change Secure Boot, or install root certificates. Installing the driver is an explicit first-setup action. The installed virtual monitor remains available in Windows after streaming stops.
 
@@ -43,4 +47,5 @@ The CI builds both apps, runs protocol/security/ADB tests, encodes and independe
 - [Driver setup and provenance](docs/DRIVER.md)
 - [Network coexistence acceptance matrix](docs/NETWORK_TESTS.md)
 - [Reference-product research](docs/SUPERDISPLAY_RESEARCH.md)
+- [Android APK findings and Dis improvements](docs/SUPERDISPLAY_APK_RESEARCH.md)
 - [Roadmap](docs/ROADMAP.md)

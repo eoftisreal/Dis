@@ -2,6 +2,8 @@
 
 Research date: 27 October 2026. The goal is to understand the reference product's architecture and the networking/USB coexistence requirement, then implement Dis independently. This is not a recovered SuperDisplay source project or a completed reverse engineering effort.
 
+Update: the user later supplied Android APK 1.2.22. See the separate [Android analysis and resulting Dis changes](SUPERDISPLAY_APK_RESEARCH.md) and [APK evidence inventory](research/superdisplay-apk-1.2.22.json). The initial installer findings below remain scoped to that executable.
+
 ## Artifact actually examined
 
 - Official download: https://superdisplay.app/download/SuperDisplay_Installer_v1.1.10.exe
@@ -10,7 +12,7 @@ Research date: 27 October 2026. The goal is to understand the reference product'
 - SHA-256: `bd7b2d30b633986f5eabfd4e1bb561e7cf7e79ee7be5db03bee270c79298d252`
 - Source of the link: https://superdisplay.app/
 
-The installer was downloaded and inspected as data. It was not executed or installed. Its full contents are not committed to this repository. The Android APK was not supplied or inspected.
+The installer was downloaded and inspected as data. It was not executed or installed. Its full contents are not committed to this repository. The Android APK had not been supplied at the time of this initial installer pass; the later Android pass is linked above.
 
 ## Confirmed evidence
 
@@ -50,9 +52,9 @@ This preserves the user's coexistence requirement as a design and acceptance-tes
 
 ## Still unverified
 
-Complete installer payload extraction; code-level analysis of its service/drivers; APK analysis; USB descriptors on a real device; observed private transport framing; codec selection and zero-copy behavior; input latency; driver recovery; network coexistence on the target phone; and comparative latency/color/CPU/GPU benchmarks.
+Complete installer payload extraction; code-level analysis of its Windows service/drivers; USB descriptors on a real device; observed private transport traffic; actual hardware codec selection and zero-copy behavior; input latency; driver recovery; network coexistence on the target phone; and comparative latency/color/CPU/GPU benchmarks. Static Android decoder/input/transport evidence is now available in the separate APK report.
 
-No private encoder, proprietary protocol, zero-copy implementation, or universal conflict-free USB behavior is inferred as a confirmed finding.
+The installer inventory alone does not establish a private encoder, proprietary protocol implementation, zero-copy path, or universal conflict-free USB behavior. The APK report distinguishes its additional code evidence from unobserved runtime behavior.
 
 ## Reproduce this inventory
 
