@@ -17,8 +17,8 @@ jobs:
             const key = 'dis-build-v4-Windows-e94178688ff03d6cc9db35558d3ee938be8e9fded7c43572b17dcf096c6cf136';
             for (const ref of ['refs/heads/feature/combined-desktop-0.4.4', 'refs/pull/1/merge']) {
               try {
-                await github.request('DELETE /repos/{owner}/{repo}/actions/caches', {
-                  owner: context.repo.owner, repo: context.repo.repo, key, ref
+                await github.request(`DELETE /repos/{owner}/{repo}/actions/caches?key=${encodeURIComponent(key)}&ref=${encodeURIComponent(ref)}`, {
+                  owner: context.repo.owner, repo: context.repo.repo
                 });
                 core.info(`Removed obsolete cache for ${ref}`);
               } catch (error) {
