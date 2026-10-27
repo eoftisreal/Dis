@@ -21,6 +21,13 @@ public final class WireTest {
         ByteArrayOutputStream bytes=new ByteArrayOutputStream();
         Wire.write(new DataOutputStream(bytes),new Wire.Packet(Wire.HELLO,7,new byte[]{97,98,99}));
         require(Arrays.equals(bytes.toByteArray(),golden));
+        CountingOutputStream control=new CountingOutputStream();
+        Wire.write(new DataOutputStream(control),new Wire.Packet(Wire.ACK,7,new byte[0]));
+        require(control.writes==1 && control.size()==16);
+        require(HexFormat.of().formatHex(control.toByteArray()).equals("44495331050000000000000000000007"));
+        control=new CountingOutputStream();
+        Wire.write(new DataOutputStream(control),new Wire.Packet(Wire.INPUT,0,new byte[24]));
+        require(control.writes==1 && control.size()==40);
         Wire.Packet read=Wire.read(new DataInputStream(new ByteArrayInputStream(golden)));
         require(read.type==Wire.HELLO && read.sequence==7 && Arrays.equals(read.payload,new byte[]{97,98,99}));
         for (int n=0;n<golden.length;n++) {
@@ -34,6 +41,8 @@ public final class WireTest {
         rejects(() -> Wire.validateLength(Wire.FRAME,-1));
         rejects(() -> Wire.validateLength(Wire.FRAME,Integer.MAX_VALUE));
         require(HexFormat.of().formatHex(Wire.pointer(1,1,0,.5f,.25f,.75f,-15,30)).equals("010100003f0000003e8000003f400000c170000041f00000"));
+        require(HexFormat.of().formatHex(Wire.pointer(0,5,0,.5f,.25f,0,30,-60)).equals("000500003f0000003e8000000000000041f00000c2700000"));
+        require(HexFormat.of().formatHex(Wire.pointer(2,0,0,.5f,.25f,.75f,0,0)).equals("020000003f0000003e8000003f4000000000000000000000"));
         String link="dis://127.0.0.1:49830?fp="+"ab".repeat(32)+"&token="+"cd".repeat(32);
         ConnectionSpec spec=ConnectionSpec.parse(link);
         require(spec.host.equals("127.0.0.1") && spec.port==49830 && spec.fingerprint.length==32);
@@ -61,6 +70,11 @@ public final class WireTest {
         System.out.println(checks+" Java protocol and connection checks passed.");
     }
     private static void require(boolean condition) { if (!condition) throw new AssertionError(); checks++; }
+    private static final class CountingOutputStream extends ByteArrayOutputStream {
+        int writes;
+        @Override public synchronized void write(int value){writes++;super.write(value);}
+        @Override public synchronized void write(byte[] bytes,int offset,int length){if(length>0)writes++;super.write(bytes,offset,length);}
+    }
     private static void rejects(Checked action) throws Exception { try { action.run(); } catch (IOException expected) { checks++; return; } throw new AssertionError("Expected IOException"); }
     private static void rejectsUri(String uri) { try { ConnectionSpec.parse(uri); } catch (IllegalArgumentException expected) { checks++; return; } throw new AssertionError("Expected invalid URI"); }
     private static void rejectsCertificate(Checked action) throws Exception { try { action.run(); } catch (CertificateException expected) { checks++; return; } throw new AssertionError("Expected certificate rejection"); }

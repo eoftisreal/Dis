@@ -1,49 +1,57 @@
 name: Build and verify
 on:
   push:
-    branches: [main, feature/smooth-display-v2, feature/apk-reference-v3]
+    branches: [main, 'feature/**']
   pull_request:
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
-  windows:
-    runs-on: windows-latest
-    timeout-minutes: 20
+  complete:
+    runs-on: windows-2022
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
-      - name: Protocol, security and Windows ADB startup tests
-        run: dotnet run --project tests/Dis.Core.Tests -c Release -- --check-installed-adb
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install independent codec verifier
-        run: python -m pip install av==16.0.1
-      - name: Build native H.264 encoder
+      - uses: actions/cache@v4
+        with:
+          path: |
+            .tools/gradle-8.9
+            .tools/gradle-home/caches
+            .tools/nuget-packages
+            .tools/signing
+            .tools/vdd-25.7.23.zip
+            ~/.m2/repository/org/robolectric
+          key: dis-build-v4-${{ runner.os }}-${{ hashFiles('android/**/*.gradle', 'src/**/*.csproj', 'tools/build-common.ps1') }}
+          restore-keys: dis-build-v4-${{ runner.os }}-
+      - name: Install Qt and independent codec verifier
         shell: pwsh
         run: |
-          cmake -S native -B artifacts/native -A x64
+          python -m pip install aqtinstall==3.3.0 av==16.0.1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          cmake --build artifacts/native --config Release --parallel
+          python -m aqt install-qt windows desktop 6.8.3 win64_msvc2022_64 -O "$env:RUNNER_TEMP/Qt" -m qtshadertools
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          & artifacts/native/Release/DisCodecSmoke.exe artifacts/native-smoke.h264
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build and test Android, Qt desktop and single installer
+        shell: pwsh
+        run: |
+          & tools/build-all.ps1 -QtRoot "$env:RUNNER_TEMP/Qt/6.8.3/msvc2022_64"
+      - name: Independently decode the encoder smoke stream
+        shell: pwsh
+        run: |
           python tools/verify_h264.py artifacts/native-smoke.h264
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Build Windows app
-        run: dotnet publish src/Dis.Host/Dis.Host.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o artifacts/windows
-      - name: Package native codec and signed driver
-        shell: pwsh
-        run: |
-          Copy-Item artifacts/native/Release/Dis.Codec.dll artifacts/windows/
-          New-Item -ItemType Directory -Force artifacts/windows/driver | Out-Null
-          Invoke-WebRequest 'https://github.com/VirtualDrivers/Virtual-Display-Driver/releases/download/25.7.23/VirtualDisplayDriver-x86.Driver.Only.zip' -OutFile artifacts/windows/driver/vdd-25.7.23.zip
-          if ((Get-FileHash artifacts/windows/driver/vdd-25.7.23.zip -Algorithm SHA256).Hash -ne 'E24210692B442B39AF763536330CE78B423F19342B7A7792C26DE3944E418B3A') { throw 'Driver checksum mismatch' }
-          Copy-Item third_party/VDD/LICENSE artifacts/windows/driver/LICENSE-VDD.txt
-          Copy-Item driver/LICENSE artifacts/windows/driver/LICENSE-Microsoft-sample.txt
       - name: Verify real virtual monitor and portrait mode
         shell: pwsh
         run: |
@@ -59,7 +67,7 @@ jobs:
           $store.Open('ReadWrite')
           try {
             $store.Add($publisher)
-            $process = Start-Process artifacts/windows/Dis.exe -ArgumentList '--display-smoke' -Wait -PassThru
+            $process = Start-Process artifacts/windows/Dis.Engine.exe -ArgumentList '--display-smoke' -WindowStyle Hidden -Wait -PassThru
             Get-Content artifacts/display-smoke.json
             if ($process.ExitCode -ne 0) { throw 'Virtual display or orientation smoke test failed' }
             python tools/verify_h264.py artifacts/capture-smoke.h264
@@ -68,80 +76,26 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: Dis-Display-Diagnostics
+          name: Dis-Diagnostics
           path: |
+            artifacts/logs/
             artifacts/display-smoke.json
             artifacts/capture-probe.jpg
+            android/app/build/reports/tests/
+            android/app/build/reports/lint-results-debug.html
           if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
         with:
-          name: Dis-Windows-x64-preview
-          path: artifacts/windows/
+          name: Dis-Setup
+          path: artifacts/Dis-Setup.exe
           if-no-files-found: error
-  android:
-    runs-on: windows-latest
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-      - uses: actions/cache@v4
-        with:
-          path: ~/.android/debug.keystore
-          key: dis-preview-signing-v1
-      - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.9'
-      - name: Cross-language protocol checks
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force artifacts/java-tests | Out-Null
-          javac -d artifacts/java-tests android/app/src/main/java/io/github/eoftisreal/dis/Wire.java android/app/src/main/java/io/github/eoftisreal/dis/ConnectionSpec.java android/app/src/main/java/io/github/eoftisreal/dis/CertificatePin.java android/app/src/main/java/io/github/eoftisreal/dis/H264ParameterSets.java android/app/src/main/java/io/github/eoftisreal/dis/InputQueue.java tests/java/WireTest.java tests/java/InputQueueTest.java
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          java -cp artifacts/java-tests io.github.eoftisreal.dis.WireTest
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          java -cp artifacts/java-tests io.github.eoftisreal.dis.InputQueueTest
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Install Android SDK platform
-        shell: pwsh
-        run: |
-          & "$env:ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager.bat" 'platforms;android-35' 'build-tools;35.0.0'
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Build, test Android input and lint
-        run: gradle -p android assembleDebug testDebugUnitTest lintDebug --console=plain --no-daemon
-      - uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: Dis-Android-Test-Reports
-          path: android/app/build/reports/tests/
-          if-no-files-found: ignore
-      - uses: actions/upload-artifact@v4
-        with:
-          name: Dis-Android-preview
-          path: android/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
-  package:
-    needs: [windows, android]
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: Dis-Windows-x64-preview
-          path: bundle
-      - uses: actions/download-artifact@v4
-        with:
-          name: Dis-Android-preview
-          path: android-apk
-      - name: Complete USB setup bundle
-        shell: pwsh
-        run: |
-          Copy-Item android-apk/app-debug.apk bundle/Dis.apk
-          Copy-Item docs/QUICK_START.txt bundle/START_HERE.txt
       - uses: actions/upload-artifact@v4
         with:
           name: Dis-Complete-Preview
-          path: bundle/
+          path: artifacts/Dis-Complete.zip
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Dis-Android-preview
+          path: artifacts/android/Dis.apk
           if-no-files-found: error

@@ -1,0 +1,28 @@
+#include <windows.h>
+IDI_ICON1 ICON "@CMAKE_CURRENT_SOURCE_DIR@/resources/dis.ico"
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION 0,4,4,0
+ PRODUCTVERSION 0,4,4,0
+ FILEFLAGSMASK 0x3fL
+ FILEFLAGS 0
+ FILEOS VOS_NT_WINDOWS32
+ FILETYPE VFT_APP
+BEGIN
+ BLOCK "StringFileInfo"
+ BEGIN
+  BLOCK "040904b0"
+  BEGIN
+   VALUE "CompanyName", "Dis"
+   VALUE "FileDescription", "Dis Virtual Monitor"
+   VALUE "FileVersion", "0.4.4"
+   VALUE "InternalName", "Dis"
+   VALUE "OriginalFilename", "Dis.exe"
+   VALUE "ProductName", "Dis Virtual Monitor"
+   VALUE "ProductVersion", "0.4.4 Preview"
+  END
+ END
+ BLOCK "VarFileInfo"
+ BEGIN
+  VALUE "Translation", 0x409, 1200
+ END
+END

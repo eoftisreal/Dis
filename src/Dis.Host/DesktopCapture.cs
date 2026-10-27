@@ -56,12 +56,13 @@ internal sealed class DesktopCapture : IDisposable
     {
         if (compositor is not null)
         {
-            var bits = desktop.LockBits(new Rectangle(Point.Empty, source.Size), ImageLockMode.ReadWrite, PixelFormat.Format32bppRgb);
-            try { if (compositor.Copy(bits.Scan0, bits.Stride, source.Width, source.Height)) hasCompositorFrame = true; }
+            var bits = scaled.LockBits(new Rectangle(0, 0, Size.Width, Size.Height), ImageLockMode.ReadWrite, PixelFormat.Format32bppRgb);
+            try { if (compositor.Copy(bits.Scan0, bits.Stride, Size.Width, Size.Height)) hasCompositorFrame = true; }
             catch (Exception e) when (e is System.Runtime.InteropServices.COMException or IOException)
             { compositor.Dispose(); compositor = null; hasCompositorFrame = false; }
-            finally { desktop.UnlockBits(bits); }
+            finally { scaled.UnlockBits(bits); }
         }
+        if (hasCompositorFrame) return;
         if (!hasCompositorFrame)
         {
             captureGraphics.CopyFromScreen(source.Location, Point.Empty, source.Size, CopyPixelOperation.SourceCopy);

@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <AssemblyName>Dis-Setup</AssemblyName>
+    <ApplicationIcon>../../ui/resources/dis.ico</ApplicationIcon>
+    <ApplicationManifest>../Dis.Host/app.manifest</ApplicationManifest>
+    <Version>0.4.4</Version>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(DisPayload)' != ''">
+    <EmbeddedResource Include="$(DisPayload)" LogicalName="Dis.Payload.zip" />
+  </ItemGroup>
+</Project>

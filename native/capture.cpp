@@ -3,6 +3,7 @@
 #include <windows.h>
 #include <d3d11.h>
 #include <d3d11_4.h>
+#include <d3dcompiler.h>
 #include <dxgi.h>
 #include <windows.graphics.capture.interop.h>
 #include <windows.graphics.directx.direct3d11.interop.h>
@@ -24,12 +25,69 @@ class Capture {
     ComPtr<ID3D11Device> device;
     ComPtr<ID3D11DeviceContext> context;
     ComPtr<ID3D11Texture2D> staging;
+    ComPtr<ID3D11Texture2D> sampleTexture, scaledTexture;
+    ComPtr<ID3D11ShaderResourceView> sourceView;
+    ComPtr<ID3D11RenderTargetView> targetView;
+    ComPtr<ID3D11VertexShader> vertexShader;
+    ComPtr<ID3D11PixelShader> pixelShader;
+    ComPtr<ID3D11SamplerState> sampler;
+    int sampleWidth = 0, sampleHeight = 0;
     IDirect3DDevice surfaceDevice{nullptr};
     GraphicsCaptureItem item{nullptr};
     Direct3D11CaptureFramePool pool{nullptr};
     GraphicsCaptureSession session{nullptr};
     int stagingWidth = 0, stagingHeight = 0;
 public:
+    void Scale(ID3D11Texture2D* texture, int width, int height) {
+        if (!vertexShader) {
+            const char* shader = R"(
+                Texture2D image : register(t0); SamplerState linearClamp : register(s0);
+                struct Vertex { float4 position : SV_POSITION; float2 uv : TEXCOORD0; };
+                Vertex vs(uint id : SV_VertexID) {
+                    Vertex v; v.uv = float2((id << 1) & 2, id & 2);
+                    v.position = float4(v.uv * float2(2, -2) + float2(-1, 1), 0, 1); return v;
+                }
+                float4 ps(Vertex v) : SV_TARGET { return image.Sample(linearClamp, v.uv); }
+            )";
+            ComPtr<ID3DBlob> vs, ps;
+            winrt::check_hresult(D3DCompile(shader, std::strlen(shader), nullptr, nullptr, nullptr, "vs", "vs_4_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, &vs, nullptr));
+            winrt::check_hresult(D3DCompile(shader, std::strlen(shader), nullptr, nullptr, nullptr, "ps", "ps_4_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, &ps, nullptr));
+            winrt::check_hresult(device->CreateVertexShader(vs->GetBufferPointer(), vs->GetBufferSize(), nullptr, &vertexShader));
+            winrt::check_hresult(device->CreatePixelShader(ps->GetBufferPointer(), ps->GetBufferSize(), nullptr, &pixelShader));
+            D3D11_SAMPLER_DESC settings{}; settings.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+            settings.AddressU = settings.AddressV = settings.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+            settings.MaxLOD = D3D11_FLOAT32_MAX;
+            winrt::check_hresult(device->CreateSamplerState(&settings, &sampler));
+        }
+        D3D11_TEXTURE2D_DESC input{}; texture->GetDesc(&input);
+        if (!sampleTexture || sampleWidth != static_cast<int>(input.Width) || sampleHeight != static_cast<int>(input.Height)) {
+            sourceView.Reset(); sampleTexture.Reset();
+            input.Usage = D3D11_USAGE_DEFAULT; input.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+            input.CPUAccessFlags = 0; input.MiscFlags = 0; input.ArraySize = 1; input.MipLevels = 1;
+            winrt::check_hresult(device->CreateTexture2D(&input, nullptr, &sampleTexture));
+            winrt::check_hresult(device->CreateShaderResourceView(sampleTexture.Get(), nullptr, &sourceView));
+            sampleWidth = input.Width; sampleHeight = input.Height;
+        }
+        if (!scaledTexture || stagingWidth != width || stagingHeight != height) {
+            targetView.Reset(); scaledTexture.Reset(); staging.Reset();
+            D3D11_TEXTURE2D_DESC output{}; output.Width = width; output.Height = height;
+            output.MipLevels = output.ArraySize = output.SampleDesc.Count = 1;
+            output.Format = DXGI_FORMAT_B8G8R8A8_UNORM; output.Usage = D3D11_USAGE_DEFAULT; output.BindFlags = D3D11_BIND_RENDER_TARGET;
+            winrt::check_hresult(device->CreateTexture2D(&output, nullptr, &scaledTexture));
+            winrt::check_hresult(device->CreateRenderTargetView(scaledTexture.Get(), nullptr, &targetView));
+        }
+        context->CopyResource(sampleTexture.Get(), texture);
+        D3D11_VIEWPORT viewport{0, 0, static_cast<float>(width), static_cast<float>(height), 0, 1};
+        context->RSSetViewports(1, &viewport);
+        ID3D11RenderTargetView* target = targetView.Get(); context->OMSetRenderTargets(1, &target, nullptr);
+        context->IASetInputLayout(nullptr); context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        context->VSSetShader(vertexShader.Get(), nullptr, 0); context->PSSetShader(pixelShader.Get(), nullptr, 0);
+        ID3D11ShaderResourceView* source = sourceView.Get(); context->PSSetShaderResources(0, 1, &source);
+        ID3D11SamplerState* linear = sampler.Get(); context->PSSetSamplers(0, 1, &linear);
+        context->Draw(3, 0);
+        ID3D11ShaderResourceView* unbound = nullptr; context->PSSetShaderResources(0, 1, &unbound);
+        context->OMSetRenderTargets(0, nullptr, nullptr);
+    }
     ~Capture() {
         try { if (session) session.Close(); } catch (...) { }
         try { if (pool) pool.Close(); } catch (...) { }
@@ -61,17 +119,22 @@ public:
         session.StartCapture();
     }
     HRESULT Copy(uint8_t* destination,int stride,int width,int height) {
-        if (!destination || stride < width*4) return E_INVALIDARG;
+        if (!destination || width < 1 || height < 1 || width > 16384 || height > 16384 || stride < width*4) return E_INVALIDARG;
         auto frame = pool.TryGetNextFrame();
         if (!frame) return S_FALSE;
         // Discard only raw captures, before encoding. The newest compositor surface keeps pointer feedback current.
         for (;;) { auto next = pool.TryGetNextFrame(); if (!next) break; frame.Close(); frame = next; }
         auto size = frame.ContentSize();
-        if (size.Width != width || size.Height != height) { frame.Close(); return HRESULT_FROM_WIN32(ERROR_RETRY); }
+        if (size.Width != item.Size().Width || size.Height != item.Size().Height) { frame.Close(); return HRESULT_FROM_WIN32(ERROR_RETRY); }
         auto access = frame.Surface().as<::Windows::Graphics::DirectX::Direct3D11::IDirect3DDxgiInterfaceAccess>();
         ComPtr<ID3D11Texture2D> texture; winrt::check_hresult(access->GetInterface(IID_PPV_ARGS(&texture)));
         D3D11_TEXTURE2D_DESC desc{}; texture->GetDesc(&desc);
-        if (!staging || stagingWidth != static_cast<int>(desc.Width) || stagingHeight != static_cast<int>(desc.Height)) {
+        // Resize on the GPU before readback: 1080p -> 720p transfers 56% fewer pixels
+        // and avoids a full-desktop GDI+ resize on every encoded frame.
+        if (static_cast<int>(desc.Width) != width || static_cast<int>(desc.Height) != height) {
+            Scale(texture.Get(), width, height); texture = scaledTexture; texture->GetDesc(&desc);
+        }
+        if (!staging || stagingWidth != width || stagingHeight != height) {
             staging.Reset();
             desc.Usage=D3D11_USAGE_STAGING; desc.BindFlags=0; desc.CPUAccessFlags=D3D11_CPU_ACCESS_READ; desc.MiscFlags=0;
             desc.ArraySize=1; desc.MipLevels=1;

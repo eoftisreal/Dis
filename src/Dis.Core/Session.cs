@@ -3,7 +3,7 @@ using System.Security.Cryptography;
 namespace Dis.Core;
 
 public sealed record ClientHello(int Version, string Token, int MaxWidth, int MaxHeight, int Fps, string Codec);
-public sealed record StreamConfig(int Version, string Codec, int Width, int Height, int Fps, bool Input, bool Pen, string Encoder = "JPEG");
+public sealed record StreamConfig(int Version, string Codec, int Width, int Height, int Fps, bool Input, bool Pen, string Encoder = "JPEG", bool Touch = false, bool Gestures = false);
 
 public sealed class PairingSession : IDisposable
 {

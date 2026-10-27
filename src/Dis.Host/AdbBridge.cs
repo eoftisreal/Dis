@@ -7,9 +7,24 @@ namespace Dis.Host;
 
 internal sealed class AdbBridge(string executable, string serial, int port, bool owned) : IAsyncDisposable
 {
+    public string Serial => serial;
+    public static async Task<bool> UsbAutostartEnabledAsync(string executable, string serial)
+    {
+        string output = await RunAsync(BundledUsbTools.Resolve(executable), "-s", serial, "shell", "content", "query", "--uri",
+            "content://io.github.eoftisreal.dis.usb/preferences");
+        return output.Contains("autostart=1", StringComparison.Ordinal);
+    }
+    internal sealed record Device(string Serial, string Model, string State);
+    public static async Task<Device[]> InspectAsync(string executable)
+    {
+        string output = await RunAsync(BundledUsbTools.Resolve(executable), "devices", "-l");
+        return output.Split('\n').Select(line => line.Trim().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
+            .Where(parts => parts.Length >= 2 && parts[0] != "List" && parts[1] is "device" or "offline" or "unauthorized")
+            .Select(parts => new Device(parts[0], (parts.FirstOrDefault(p => p.StartsWith("model:", StringComparison.Ordinal))?[6..] ?? "Android device").Replace('_', ' '), parts[1])).ToArray();
+    }
     public static async Task<AdbBridge> ConnectAsync(string executable, string requestedSerial, int port)
     {
-        executable = AdbLocator.Resolve(executable);
+        executable = BundledUsbTools.Resolve(executable);
         string serial = requestedSerial.Trim();
         if (serial.Length == 0)
         {
@@ -73,9 +88,19 @@ internal sealed class AdbBridge(string executable, string serial, int port, bool
             throw new IOException("Install the updated Dis Android app first, then connect USB again.");
     }
 
+    public async Task<(int Width, int Height)> ScreenSizeAsync()
+    {
+        string output = await RunAsync(executable, "-s", serial, "shell", "wm", "size");
+        var matches = System.Text.RegularExpressions.Regex.Matches(output, @"(\d{3,5})x(\d{3,5})");
+        if (matches.Count > 0 && int.TryParse(matches[^1].Groups[1].Value, out int width)
+            && int.TryParse(matches[^1].Groups[2].Value, out int height) && width is >= 240 and <= 8192 && height is >= 240 and <= 8192)
+            return (width, height);
+        return (1920, 1080);
+    }
+
     public static async Task InstallReceiverAsync(string executable, string requestedSerial, string apk)
     {
-        executable = AdbLocator.Resolve(executable);
+        executable = BundledUsbTools.Resolve(executable);
         var args = new List<string>();
         if (!string.IsNullOrWhiteSpace(requestedSerial)) { args.Add("-s"); args.Add(requestedSerial.Trim()); }
         args.AddRange(["install", "-r", apk]);
@@ -92,8 +117,8 @@ internal sealed class AdbBridge(string executable, string serial, int port, bool
         try { return Process.Start(start) ?? throw new IOException("Cannot start adb.exe."); }
         catch (Win32Exception e)
         {
-            throw new IOException("ADB could not be started. Use Browse to select adb.exe and keep the complete " +
-                $"Android Platform Tools folder together. Windows reported: {e.Message}", e);
+            throw new IOException("Dis could not start its built-in USB tools. Close Dis and reinstall the latest setup. " +
+                $"Windows reported: {e.Message}", e);
         }
     }
 

@@ -1,0 +1,15 @@
+<resources>
+    <item name="open_dashboard" type="id" />
+    <item name="open_controls" type="id" />
+    <item name="touch_lock" type="id" />
+    <item name="connection_phase" type="id" />
+    <item name="connection_message" type="id" />
+    <item name="reconnect_display" type="id" />
+    <item name="disconnect_display" type="id" />
+    <item name="stream_fps" type="id" />
+    <item name="decoder_fps" type="id" />
+    <item name="ping_rtt" type="id" />
+    <item name="video_mbps" type="id" />
+    <item name="video_details" type="id" />
+    <item name="copy_diagnostics" type="id" />
+</resources>

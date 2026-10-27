@@ -1,7 +1,5 @@
 <resources>
     <string name="app_name">Dis</string>
-    <string name="app_heading">Dis / Your next screen</string>
-    <string name="setup_help">For USB, press Connect on Windows: Dis opens and connects automatically. For a network connection, enter the connection link below.</string>
     <string-array name="orientation_options">
         <item>Auto</item><item>Landscape</item><item>Portrait</item>
     </string-array>
@@ -10,7 +8,40 @@
     <string name="disconnect">Disconnect</string>
     <string name="disconnected">Disconnected</string>
     <string name="ready">Ready</string>
-    <string name="full_screen">Full screen</string>
     <string name="controls">Controls</string>
     <string name="display_description">Remote Windows display. Touch to control when enabled on Windows.</string>
+    <string name="android_home_title">Your Windows display,\nwherever you are.</string>
+    <string name="android_home_help">Open Dis on your PC and choose Connect display.\nUSB pairing happens automatically.</string>
+    <string name="connection_controls">Connection controls</string>
+    <string name="done">Done</string>
+    <string name="reconnect">Reconnect</string>
+    <string name="connecting">Connecting to Windows…</string>
+    <string name="live_diagnostics">Live diagnostics</string>
+    <string name="stream_fps">Stream FPS</string>
+    <string name="decoder_fps">Decoder FPS</string>
+    <string name="ping_rtt">Ping · ms</string>
+    <string name="video_mbps">Video · Mbps</string>
+    <string name="ping_explanation">Ping is network roundtrip, not screen latency. The graph shows received FPS over the last minute.</string>
+    <string name="phone_orientation">Phone orientation</string>
+    <string name="show_diagnostics_overlay">Show live stats over the display</string>
+    <string name="copy_diagnostics">Copy diagnostics</string>
+    <string name="diagnostics_copied">Diagnostics copied</string>
+    <string name="network_pairing">Network pairing</string>
+    <string name="network_pairing_help">For a network connection, paste the pairing link from your PC. USB does not need a link.</string>
+    <string name="phase_streaming">CONNECTED · ENCRYPTED</string>
+    <string name="phase_authenticating">VERIFYING CONNECTION</string>
+    <string name="phase_connecting">CONNECTING</string>
+    <string name="phase_retrying">RECONNECTING</string>
+    <string name="phase_error">CONNECTION ISSUE</string>
+    <string name="phase_idle">NOT CONNECTED</string>
+    <string name="video_details_waiting">Video and decoder details appear when the receiver connects.</string>
+    <string name="connection_paused">Connection paused while Dis is in the background.</string>
+    <string name="usb_autostart">Start display when USB connects</string>
+    <string name="usb_autostart_help">Keep Dis running in your PC tray with USB autoconnect enabled. After you authorize USB debugging, your PC opens this app when you plug in. Unlock your phone if Android asks.</string>
+    <string name="lock_touch">Lock touch input</string>
+    <string name="unlock_touch">Unlock touch input</string>
+    <string name="touch_locked">Touch locked</string>
+    <string name="touch_unlocked">Touch enabled</string>
+    <string name="touch_gestures_title">Touch gestures</string>
+    <string name="touch_gestures_help">Tap to click. Swipe with one finger to scroll in touch-enabled Windows apps; hold to open their context menu. Use two fingers to scroll in desktop apps, or tap with two fingers to right-click. Drag directly to move items. The lock icon pauses touch and pen input.</string>
 </resources>

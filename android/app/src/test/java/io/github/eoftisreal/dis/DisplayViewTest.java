@@ -35,7 +35,7 @@ public final class DisplayViewTest {
         frame.addView(view,new FrameLayout.LayoutParams(400,200));
         controller.get().setContentView(frame);
         view.setVideoGeometry(400,200);
-        view.configure(true,true,packets::add);
+        view.configure(true,true,false,false,packets::add);
         shadowOf(Looper.getMainLooper()).idle();
         frame.measure(android.view.View.MeasureSpec.makeMeasureSpec(400,android.view.View.MeasureSpec.EXACTLY),
             android.view.View.MeasureSpec.makeMeasureSpec(200,android.view.View.MeasureSpec.EXACTLY));
@@ -119,13 +119,63 @@ public final class DisplayViewTest {
     }
 
     @Test public void inputDisableAndPenDisableAreRespected() {
-        view.configure(true,false,packets::add); shadowOf(Looper.getMainLooper()).idle();
+        view.configure(true,false,false,false,packets::add); shadowOf(Looper.getMainLooper()).idle();
         touch(MotionEvent.ACTION_DOWN,MotionEvent.TOOL_TYPE_STYLUS,0);
         touch(MotionEvent.ACTION_UP,MotionEvent.TOOL_TYPE_STYLUS,0);
         assertPacket(0,0,0); assertPacket(1,0,2);
         view.resetInput(); shadowOf(Looper.getMainLooper()).idle();
         touch(MotionEvent.ACTION_DOWN,MotionEvent.TOOL_TYPE_FINGER,0);
         assertEquals(2,packets.size());
+    }
+
+    @Test public void touchLockReleasesContactAndHoverAndBlocksFurtherInput(){
+        touch(MotionEvent.ACTION_DOWN,MotionEvent.TOOL_TYPE_FINGER,0);
+        view.setTouchLocked(true);
+        touch(MotionEvent.ACTION_MOVE,MotionEvent.TOOL_TYPE_FINGER,0);
+        hover(MotionEvent.ACTION_HOVER_ENTER,MotionEvent.TOOL_TYPE_STYLUS);
+        assertEquals(2,packets.size());assertPacket(1,0,3);
+        view.setTouchLocked(false);
+        hover(MotionEvent.ACTION_HOVER_ENTER,MotionEvent.TOOL_TYPE_STYLUS);
+        view.setTouchLocked(true);
+        assertEquals(4,packets.size());assertPacket(3,1,3);
+    }
+
+    @Test public void nativeTouchIsCancelledBeforeTwoFingerScrollAndDoesNotResumeWithOneFinger(){
+        view.configure(true,true,true,true,packets::add);shadowOf(Looper.getMainLooper()).idle();
+        touch(MotionEvent.ACTION_DOWN,MotionEvent.TOOL_TYPE_FINGER,0);
+        twoFingers(MotionEvent.ACTION_POINTER_DOWN|(1<<MotionEvent.ACTION_POINTER_INDEX_SHIFT),100,50);
+        twoFingers(MotionEvent.ACTION_MOVE,100,120);
+        twoFingers(MotionEvent.ACTION_POINTER_UP|(1<<MotionEvent.ACTION_POINTER_INDEX_SHIFT),100,120);
+        touch(MotionEvent.ACTION_MOVE,MotionEvent.TOOL_TYPE_FINGER,0);
+        touch(MotionEvent.ACTION_UP,MotionEvent.TOOL_TYPE_FINGER,0);
+        assertPacket(0,2,0);assertPacket(1,2,3);
+        assertTrue(packets.size()>2);
+        for(int n=2;n<packets.size();n++)assertPacket(n,0,5);
+        touch(MotionEvent.ACTION_DOWN,MotionEvent.TOOL_TYPE_FINGER,0);
+        assertPacket(packets.size()-1,2,0);
+    }
+
+    @Test public void penTakesOverNativeTouchAndPalmDoesNotStartScrolling(){
+        view.configure(true,true,true,true,packets::add);shadowOf(Looper.getMainLooper()).idle();
+        touch(MotionEvent.ACTION_DOWN,MotionEvent.TOOL_TYPE_FINGER,0);
+        hover(MotionEvent.ACTION_HOVER_ENTER,MotionEvent.TOOL_TYPE_STYLUS);
+        twoFingers(MotionEvent.ACTION_POINTER_DOWN|(1<<MotionEvent.ACTION_POINTER_INDEX_SHIFT),100,50);
+        assertEquals(3,packets.size());assertPacket(0,2,0);assertPacket(1,2,3);assertPacket(2,1,4);
+    }
+
+    @Test public void twoFingerTapSendsOneContextClick(){
+        view.configure(true,true,true,true,packets::add);shadowOf(Looper.getMainLooper()).idle();
+        touch(MotionEvent.ACTION_DOWN,MotionEvent.TOOL_TYPE_FINGER,0);
+        twoFingers(MotionEvent.ACTION_POINTER_DOWN|(1<<MotionEvent.ACTION_POINTER_INDEX_SHIFT),100,50);
+        twoFingers(MotionEvent.ACTION_POINTER_UP|(1<<MotionEvent.ACTION_POINTER_INDEX_SHIFT),100,50);
+        touch(MotionEvent.ACTION_UP,MotionEvent.TOOL_TYPE_FINGER,0);
+        assertEquals(3,packets.size());assertPacket(2,0,6);
+    }
+
+    private void twoFingers(int action,float x,float y){
+        MotionEvent event=event(action,new int[]{0,1},new int[]{MotionEvent.TOOL_TYPE_FINGER,MotionEvent.TOOL_TYPE_FINGER},
+            new MotionEvent.PointerCoords[]{coords(x,y,.5f),coords(x+20,y,.5f)},0);
+        view.onTouchEvent(event);event.recycle();
     }
 
     private void touch(int action,int tool,int id) {
@@ -150,3 +200,4 @@ public final class DisplayViewTest {
     }
     private static float number(byte[] packet,int offset) { return ByteBuffer.wrap(packet).getFloat(offset); }
 }
+

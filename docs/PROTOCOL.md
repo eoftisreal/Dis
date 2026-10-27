@@ -29,11 +29,17 @@ Version 1 permits one outstanding frame; version 2 permits two. A frame slot is 
 
 For JPEG, ACK follows frame consumption. For H.264, ACK follows release of decoder output to its Surface; this is not a promise of exact physical presentation time. The decoder's input/output queues are bounded and a failed/surface-lost session reconnects. A frame-slot/send timeout closes a stalled peer.
 
+The Android writer serializes the complete header and payload into one socket write per message, then flushes. Primitive header fields must not be separate unbuffered TLS writes: frame ACKs previously used six header writes. The receiver reads the header in one bulk operation and validates its length before allocating a payload. These changes preserve DIS1 packet bytes and acknowledgement semantics.
+
+Android 0.4.1 diagnostics measure local decoder queue-to-Surface-release time, decoder input-buffer wait, and ACK write duration (including contention for the serialized writer). They use the phone's monotonic clock and report per-sample averages; they are not motion-to-photon latency. Windows statistics additionally expose capture/encode time, frame-window wait, socket-write time per transmitted frame, and the active capture backend. Capture/encode totals include attempts that produced no encoded access unit.
+
 ## Pointer input
 
-The 24-byte Input payload is kind (u8: mouse 0 / pen 1), action (u8: down 0 / move 1 / up 2 / cancel 3 / hover 4), buttons (u16: barrel bit 0 / eraser bit 1), then five float32 values: x, y, pressure (0…1), tiltX and tiltY (−90…90). All floats must be finite. Coordinates map through the aspect-correct display view to the selected Windows monitor. The input queue is bounded; session teardown releases held mouse/pen contacts.
+New hosts advertise optional `touch` and `gestures` booleans in Config. New receivers send native contact/gesture packets only when advertised; an older host receives the existing mouse/pen format. The 24-byte payload size and frame protocol version remain unchanged.
 
-In the 0.3 implementation, pen Hover means in range without contact. Pen Cancel releases contact, if present, and clears range; cancelling an already out-of-range pen does nothing. A pen replacing a finger sends a mouse Cancel before its pen Down. No wire-format change is needed. Below eight queued packets, movement samples are retained; at eight queued packets or more, only adjacent Move/Move or Hover/Hover packets with identical kind and buttons may be replaced with the newest sample. Contact/button/tool transitions retain their order.
+Pointer kind 2 is a single native Windows touch contact, with Down/Move/Up/Cancel actions and zero button flags. Mouse action 5 is scroll: `tiltX` and `tiltY` carry signed horizontal/vertical wheel units, bounded to ±90 per packet, with zero pressure/buttons. Fractional wheel units accumulate on Windows. Mouse action 6 is right-click at the normalized target position, with zero pressure/buttons. Pen/touch gesture combinations are rejected. Touch contacts are cancelled when switching to a two-finger wheel gesture, locking input, or ending the session, so a drag cannot remain pressed.
+
+The 24-byte Input payload is kind (u8: mouse 0 / pen 1), action (u8: down 0 / move 1 / up 2 / cancel 3 / hover 4), buttons (u16: barrel bit 0 / eraser bit 1), then five float32 values: x, y, pressure (0…1), tiltX and tiltY (−90…90). All floats must be finite. Coordinates map through the aspect-correct display view to the selected Windows monitor. The input queue is bounded; session teardown releases held mouse/pen contacts.
 
 ## USB pairing and rotation
 

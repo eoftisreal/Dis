@@ -12,8 +12,8 @@ internal sealed class MainForm : Form
     private sealed record DisplayChoice(string Name, Rectangle Bounds) { public override string ToString() => $"{Name} · {Bounds.Width} × {Bounds.Height}"; }
     private readonly ComboBox connection = Choice();
     private readonly ComboBox display = Choice();
-    private readonly ComboBox mode = Choice();
     private readonly ComboBox qualityPreset = Choice();
+    private readonly ComboBox desktopSize = Choice();
     private readonly ComboBox orientation = Choice();
     private readonly NumericUpDown fps = new() { Minimum = 10, Maximum = 60, Value = 60, Dock = DockStyle.Fill };
     private readonly NumericUpDown port = new() { Minimum = 1024, Maximum = 65535, Value = 49830, Dock = DockStyle.Fill };
@@ -21,7 +21,8 @@ internal sealed class MainForm : Form
     private readonly TextBox serial = new() { PlaceholderText = "Automatic for one authorized phone", Dock = DockStyle.Fill };
     private readonly TextBox pairing = new() { ReadOnly = true, Multiline = true, Height = 65, Dock = DockStyle.Fill };
     private readonly CheckBox remoteInput = new() { Text = "Touch and pen", Checked = true, AutoSize = true };
-    private readonly Label status = new() { Text = "Ready · choose Second display or Mirror", AutoSize = true, Dock = DockStyle.Fill };
+    private readonly CheckBox autoConnect = new() { Text = "Connect USB when Dis opens", AutoSize = true };
+    private readonly Label status = new() { Text = "Ready · connect your Android display", AutoSize = true, Dock = DockStyle.Fill };
     private readonly Button connect = Button("Connect");
     private readonly Button setup = Button("Set up second display");
     private readonly Button rotate = Button("Apply orientation");
@@ -30,18 +31,22 @@ internal sealed class MainForm : Form
     private DisplayServer? server;
     private AdbBridge? tunnel;
     private PairingSession? session;
+    private string? sessionDisplay;
+    private DriverSession? driverSession;
     private bool busy, closing;
+    private readonly System.Windows.Forms.Timer receiverWatch = new() { Interval = 1000 };
+    private long receiverStarted;
 
     public MainForm()
     {
-        Text = "Dis · Your second screen"; Size = new(790, 730); MinimumSize = new(700, 620);
-        Font = new("Segoe UI", 10); BackColor = Color.FromArgb(244, 246, 250);
+        Text = "Dis · Virtual Monitor"; Size = new(840, 850); MinimumSize = new(740, 650);
+        Font = new("Segoe UI", 10); BackColor = Color.FromArgb(15, 23, 42); ForeColor = Color.FromArgb(226, 232, 240);
         var root = new TableLayoutPanel { Dock = DockStyle.Fill, AutoScroll = true, Padding = new(24), ColumnCount = 2, RowCount = 1 };
         root.ColumnStyles.Add(new(SizeType.Absolute, 175)); root.ColumnStyles.Add(new(SizeType.Percent, 100)); Controls.Add(root);
-        var title = new Label { Text = "Your next screen.", Font = new("Segoe UI", 24, FontStyle.Bold), AutoSize = true };
+        var title = new Label { Text = "Dis / Virtual monitor", Font = new("Segoe UI", 24, FontStyle.Bold), AutoSize = true };
         root.Controls.Add(title, 0, 0); root.SetColumnSpan(title, 2);
-        mode.Items.AddRange(["Second display", "Mirror selected screen"]); mode.SelectedIndex = 0;
-        qualityPreset.Items.AddRange(["720p · smooth", "1080p · detailed"]); qualityPreset.SelectedIndex = 0;
+        qualityPreset.Items.AddRange(["Fast · 720p / 60 fps", "Balanced · 1080p / 30 fps", "Sharp · 1080p / 60 fps"]); qualityPreset.SelectedIndex = 0;
+        desktopSize.Items.AddRange(["Match phone shape", "Full HD · 1920 × 1080", "Large text · compact desktop"]); desktopSize.SelectedIndex = 0;
         orientation.Items.AddRange(["Landscape", "Portrait", "Landscape flipped", "Portrait flipped"]); orientation.SelectedIndex = 0;
         connection.Items.Add(new Connection("USB · open and connect Android automatically", IPAddress.Loopback));
         foreach (var adapter in NetworkInterface.GetAllNetworkInterfaces().Where(n => n.OperationalStatus == OperationalStatus.Up))
@@ -49,12 +54,13 @@ internal sealed class MainForm : Form
             if (address.Address.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(address.Address))
                 connection.Items.Add(new Connection($"{adapter.Name} · {address.Address}", address.Address));
         connection.SelectedIndex = 0;
-        Add(root, "Connection", connection); Add(root, "Use Android as", mode); Add(root, "Mirror screen", display);
-        Add(root, "Quality", qualityPreset); Add(root, "Target frame rate", fps);
+        Add(root, "Connection", connection);
+        Add(root, "Desktop size", desktopSize); Add(root, "Performance", qualityPreset); Add(root, "Target frame rate", fps);
         var rotationRow = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, ColumnCount = 2 };
         rotationRow.ColumnStyles.Add(new(SizeType.Percent, 100)); rotationRow.ColumnStyles.Add(new(SizeType.AutoSize));
         rotationRow.Controls.Add(orientation, 0, 0); rotationRow.Controls.Add(rotate, 1, 0); Add(root, "Windows orientation", rotationRow);
         Add(root, "Input", remoteInput);
+        Add(root, "Startup", autoConnect);
         var actions = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true };
         var installAndroid = Button("Install/update Android app"); actions.Controls.AddRange([connect, setup, installAndroid]); Add(root, "", actions);
         Add(root, "Status", status);
@@ -65,15 +71,23 @@ internal sealed class MainForm : Form
         var adbRow = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 2 };
         adbRow.ColumnStyles.Add(new(SizeType.Percent, 100)); adbRow.ColumnStyles.Add(new(SizeType.AutoSize));
         var browse = Button("Browse…"); adbRow.Controls.Add(adb, 0, 0); adbRow.Controls.Add(browse, 1, 0);
-        Add(advanced, "ADB executable", adbRow); Add(advanced, "Device serial", serial); Add(advanced, "Port", port); Add(advanced, "Network link", pairing);
-        Button copy = Button("Copy network connection"), getTools = Button("Get Platform Tools");
-        var pairButtons = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true }; pairButtons.Controls.AddRange([copy, getTools]); Add(advanced, "", pairButtons);
+        Add(advanced, "Device serial", serial); Add(advanced, "Port", port); Add(advanced, "Network link", pairing);
+        Button copy = Button("Copy network connection");
+        var pairButtons = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true }; pairButtons.Controls.Add(copy); Add(advanced, "", pairButtons);
         Add(root, "", advanced);
         Add(root, "", new Label { AutoSize = true, MaximumSize = new(520, 0), Text = "USB: install the Android app once, authorize USB debugging, then press Connect. Second display needs the one-time driver setup. H.264 uses a hardware encoder when available; the live status shows the path actually in use." });
-        adb.Text = AdbLocator.Find(null) ?? "adb.exe";
+        adb.Text = "";
+        var preferences = HostPreferences.Load();
+        qualityPreset.SelectedIndex = Math.Clamp(preferences.Quality, 0, 2);
+        desktopSize.SelectedIndex = Math.Clamp(preferences.Desktop, 0, 2);
+        orientation.SelectedIndex = Math.Clamp(preferences.Orientation, 0, 3);
+        fps.Value = Math.Clamp(preferences.Fps, 10, 60);
+        remoteInput.Checked = preferences.Input; autoConnect.Checked = preferences.AutoConnect;
+        if (!string.IsNullOrWhiteSpace(preferences.Adb)) adb.Text = preferences.Adb;
+        serial.Text = preferences.Serial ?? "";
         RefreshDisplays();
-        settings.AddRange([connection, mode, display, qualityPreset, fps, remoteInput, adb, serial, port, browse, setup, installAndroid, refresh]);
-        mode.SelectedIndexChanged += (_, _) => display.Enabled = server is null && mode.SelectedIndex == 1;
+        settings.AddRange([connection, qualityPreset, desktopSize, fps, remoteInput, autoConnect, adb, serial, port, browse, setup, installAndroid, refresh]);
+        qualityPreset.SelectedIndexChanged += (_, _) => fps.Value = qualityPreset.SelectedIndex == 1 ? 30 : 60;
         connection.SelectedIndexChanged += (_, _) => { if (connection.SelectedIndex > 0) advanced.Visible = true; };
         connect.Click += async (_, _) => await ToggleAsync();
         rotate.Click += async (_, _) => await RotateAsync();
@@ -82,14 +96,31 @@ internal sealed class MainForm : Form
         showAdvanced.Click += (_, _) => advanced.Visible = !advanced.Visible;
         refresh.Click += (_, _) => RefreshDisplays();
         windowsSettings.Click += (_, _) => OpenUrl("ms-settings:display");
-        getTools.Click += (_, _) => OpenUrl("https://developer.android.com/tools/releases/platform-tools");
         copy.Click += (_, _) => { if (pairing.Text.Length > 0) Clipboard.SetText(pairing.Text); };
         browse.Click += (_, _) => {
             using var picker = new OpenFileDialog { Title = "Select adb.exe", Filter = "Android Debug Bridge|adb.exe", CheckFileExists = true };
             if (picker.ShowDialog(this) == DialogResult.OK) adb.Text = picker.FileName;
         };
         display.Enabled = false;
+        ApplyTheme(root);
+        connect.BackColor = Color.FromArgb(37, 99, 235); connect.ForeColor = Color.White;
+        connect.Font = new(Font, FontStyle.Bold); connect.Padding = new(18, 8, 18, 8);
+        status.ForeColor = Color.FromArgb(94, 234, 212); status.MaximumSize = new(520, 0);
+        Shown += async (_, _) => { if (autoConnect.Checked) await ToggleAsync(); };
         FormClosing += OnClosing;
+        receiverWatch.Tick += async (_, _) => await CheckReceiverAsync();
+        Disposed += (_, _) => receiverWatch.Dispose();
+    }
+    private static void ApplyTheme(Control parent)
+    {
+        foreach (Control child in parent.Controls)
+        {
+            child.ForeColor = Color.FromArgb(226, 232, 240);
+            if (child is Button button) { button.FlatStyle = FlatStyle.Flat; button.FlatAppearance.BorderColor = Color.FromArgb(51, 65, 85); button.BackColor = Color.FromArgb(30, 41, 59); }
+            else if (child is ComboBox choice) { choice.FlatStyle = FlatStyle.Flat; choice.BackColor = Color.FromArgb(30, 41, 59); }
+            else if (child is TextBox or NumericUpDown) child.BackColor = Color.FromArgb(30, 41, 59);
+            ApplyTheme(child);
+        }
     }
     private static ComboBox Choice() => new() { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill };
     private static Button Button(string text) => new() { Text = text, AutoSize = true };
@@ -110,36 +141,63 @@ internal sealed class MainForm : Form
     {
         busy = value; connect.Enabled = !value; rotate.Enabled = !value; orientation.Enabled = !value;
         foreach (var item in settings) item.Enabled = !value && server is null;
-        display.Enabled = !value && server is null && mode.SelectedIndex == 1;
+        display.Enabled = false;
     }
     private async Task StartAsync()
     {
         if (connection.SelectedItem is not Connection chosen) throw new IOException("Select a connection.");
-        if (mode.SelectedIndex == 0)
+        // Verify the phone before creating a virtual desktop or asking for elevation.
+        if (chosen.Address.Equals(IPAddress.Loopback)) {
+            adb.Text = BundledUsbTools.Resolve(adb.Text);
+            tunnel = await AdbBridge.ConnectAsync(adb.Text, serial.Text, (int)port.Value);
+        }
         {
-            string virtualName = DisplayModes.EnsureExtended();
+            status.Text = "Activating second display…";
+            string virtualName = await PrepareVirtualDisplayAsync();
+            int width = desktopSize.SelectedIndex == 2 ? 800 : 1920;
+            int height = desktopSize.SelectedIndex == 2 ? 600 : 1080;
+            if (desktopSize.SelectedIndex == 0 && tunnel is not null) {
+                var phone = await tunnel.ScreenSizeAsync();
+                width = Math.Max(phone.Width, phone.Height); height = Math.Min(phone.Width, phone.Height);
+            }
+            if ((orientation.SelectedIndex & 1) != 0) (width, height) = (height, width);
+            DisplayModes.SetDesktopSize(virtualName, width, height, orientation.SelectedIndex);
+            Rectangle expectedBounds = DisplayModes.Bounds(virtualName);
             for (int i = 0; i < 30; i++) {
                 RefreshDisplays(virtualName);
-                if ((display.SelectedItem as DisplayChoice)?.Name == virtualName) break;
+                if (display.SelectedItem is DisplayChoice selected && selected.Name == virtualName && selected.Bounds == expectedBounds) break;
                 await Task.Delay(100);
             }
-            if ((display.SelectedItem as DisplayChoice)?.Name != virtualName) throw new IOException("Windows has not activated the virtual monitor. Open Windows display settings and choose Extend.");
+            if (display.SelectedItem is not DisplayChoice activated || activated.Name != virtualName || activated.Bounds != expectedBounds)
+                throw new IOException("Windows has not finished activating the selected desktop size. Retry Connect.");
         }
         if (display.SelectedItem is not DisplayChoice screen) throw new IOException("Select an active screen.");
         status.Text = "Connecting…";
-        if (chosen.Address.Equals(IPAddress.Loopback)) {
-            adb.Text = AdbLocator.Resolve(adb.Text);
-            tunnel = await AdbBridge.ConnectAsync(adb.Text, serial.Text, (int)port.Value);
-        }
         session ??= new();
+        SavePreferences();
         int pixels = qualityPreset.SelectedIndex == 0 ? 1280 * 720 : 1920 * 1080;
         server = new(new(chosen.Address, (int)port.Value, screen.Name, screen.Bounds, 1920, 1920, (int)fps.Value, 75, remoteInput.Checked, pixels), session);
         server.Status += UpdateStatus; pairing.Text = server.ConnectionUri(chosen.Address.ToString()); connect.Text = "Disconnect";
+        receiverStarted = Stopwatch.GetTimestamp(); receiverWatch.Start();
+        server.Statistics += _ => { if (server?.LastFrameAcknowledged > 0) BeginInvoke(() => driverSession?.KeepAlive()); };
         if (tunnel is not null) {
             try { await tunnel.OpenReceiverAsync(pairing.Text); status.Text = "Android opened · connecting automatically…"; }
             catch (IOException e) { status.Text = e.Message + " Use Install/update Android app, then Connect again."; await StopAsync(); throw; }
         }
         else { advanced.Visible = true; status.Text = "Waiting for Android · use the network link under Advanced"; }
+    }
+    private async Task<string> PrepareVirtualDisplayAsync()
+    {
+        if (driverSession is null)
+        {
+            driverSession = await DriverSession.StartAsync();
+            for (int i = 0; i < 50 && !DisplayModes.Enumerate().Any(a => a.Virtual); i++) await Task.Delay(100);
+        }
+        // Claim cleanup before activation, so partial failures also detach the monitor.
+        sessionDisplay = DisplayModes.Enumerate().FirstOrDefault(a => a.Virtual)?.Name;
+        string name = await DisplayModes.EnsureExtendedAsync();
+        sessionDisplay = name;
+        return name;
     }
     private async Task ToggleAsync()
     {
@@ -150,20 +208,48 @@ internal sealed class MainForm : Form
     }
     private async Task StopAsync(bool revoke = true)
     {
-        if (server is not null) { var old = server; server = null; old.Status -= UpdateStatus; await old.DisposeAsync(); }
-        if (tunnel is not null) {
-            var old = tunnel; tunnel = null;
-            try { await old.DisposeAsync(); } catch (Exception e) when (Handled(e)) { status.Text = e.Message; }
+        receiverWatch.Stop();
+        try
+        {
+            if (server is not null) { var old = server; server = null; old.Status -= UpdateStatus; await old.DisposeAsync(); }
         }
-        if (revoke) { session?.Dispose(); session = null; }
-        pairing.Clear(); connect.Text = "Connect";
+        finally
+        {
+            try
+            {
+                if (tunnel is not null) {
+                    var old = tunnel; tunnel = null;
+                    try { await old.DisposeAsync(); } catch (Exception e) when (Handled(e)) { status.Text = e.Message; }
+                }
+            }
+            finally
+            {
+                if (revoke)
+                {
+                    session?.Dispose(); session = null;
+                    if (sessionDisplay is not null)
+                    {
+                        try { DisplayModes.Disconnect(sessionDisplay); sessionDisplay = null; }
+                        catch (Exception e) when (Handled(e)) { status.Text = "Could not disconnect the virtual monitor: " + e.Message; }
+                    }
+                    if (driverSession is not null)
+                    {
+                        var old = driverSession; driverSession = null;
+                        try { await old.DisposeAsync(); sessionDisplay = null; }
+                        catch (Exception e) when (Handled(e) || e is TimeoutException) { status.Text = e.Message; }
+                    }
+                }
+                pairing.Clear(); connect.Text = "Connect";
+            }
+        }
     }
     private async Task RotateAsync()
     {
+        if (server is null) { SavePreferences(); status.Text = "Orientation saved for your next connection."; return; }
         if (busy) return; SetBusy(true); bool restart = server is not null;
         try {
-            string name = mode.SelectedIndex == 0 ? DisplayModes.EnsureExtended()
-                : (display.SelectedItem as DisplayChoice)?.Name ?? throw new IOException("Select a screen.");
+            string name = await PrepareVirtualDisplayAsync();
+            sessionDisplay = name;
             if (restart) await StopAsync(false);
             DisplayModes.Rotate(name, orientation.SelectedIndex);
             await Task.Delay(350); RefreshDisplays(name);
@@ -172,16 +258,39 @@ internal sealed class MainForm : Form
         catch (Exception e) when (Handled(e)) { await StopAsync(); status.Text = e.Message; }
         finally { SetBusy(false); }
     }
+    private async Task CheckReceiverAsync()
+    {
+        if (busy || closing || server is null) return;
+        long acknowledged = server.LastFrameAcknowledged;
+        TimeSpan? age = acknowledged == 0 ? null : Stopwatch.GetElapsedTime(acknowledged);
+        if (age is not null && age < TimeSpan.FromSeconds(5)) driverSession?.KeepAlive();
+        bool usb = connection.SelectedItem is Connection c && IPAddress.IsLoopback(c.Address);
+        if (!ReceiverWatchdog.Expired(Stopwatch.GetElapsedTime(receiverStarted), age, server.HasReceiver, usb)) return;
+        SetBusy(true);
+        try { await StopAsync(); status.Text = "The phone is not displaying video. The virtual display was removed. Reconnect when the phone is ready."; }
+        catch (Exception e) when (Handled(e)) { status.Text = e.Message; }
+        finally { SetBusy(false); }
+    }
+    private void SavePreferences()
+    {
+        try { new HostPreferences(0, qualityPreset.SelectedIndex, desktopSize.SelectedIndex,
+            orientation.SelectedIndex, (int)fps.Value, remoteInput.Checked, true, adb.Text, serial.Text, autoConnect.Checked).Save(); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { status.Text = "Settings could not be saved: " + e.Message; }
+    }
     private async Task SetupAsync()
     {
         if (busy) return; SetBusy(true);
         try {
             string executable = Environment.ProcessPath ?? throw new IOException("Cannot locate Dis.exe.");
             var info = new ProcessStartInfo(executable) { UseShellExecute = true, Verb = "runas", WorkingDirectory = AppContext.BaseDirectory };
-            if (Path.GetFileNameWithoutExtension(executable).Equals("dotnet", StringComparison.OrdinalIgnoreCase)) info.ArgumentList.Add(Path.Combine(AppContext.BaseDirectory, "Dis.dll"));
+            if (Path.GetFileNameWithoutExtension(executable).Equals("dotnet", StringComparison.OrdinalIgnoreCase)) info.ArgumentList.Add(Path.Combine(AppContext.BaseDirectory, typeof(Program).Assembly.GetName().Name + ".dll"));
             info.ArgumentList.Add("--install-display-driver");
             using var helper = Process.Start(info) ?? throw new IOException("Cannot open driver setup.");
-            await helper.WaitForExitAsync(); RefreshDisplays();
+            await helper.WaitForExitAsync();
+            if (helper.ExitCode == 0)
+                foreach (var adapter in DisplayModes.Enumerate().Where(a => a.Virtual && a.Active))
+                    DisplayModes.Disconnect(adapter.Name);
+            RefreshDisplays();
             status.Text = helper.ExitCode == 0 ? "Driver setup complete · press Connect in Second display mode" : "Driver setup did not finish. Check the setup window's message.";
         }
         catch (Exception e) when (Handled(e)) { status.Text = e.Message; }
@@ -205,7 +314,7 @@ internal sealed class MainForm : Form
         finally { SetBusy(false); }
     }
     private void OpenUrl(string url) { try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); } catch (System.ComponentModel.Win32Exception e) { status.Text = e.Message; } }
-    private static bool Handled(Exception e) => e is IOException or SocketException or System.ComponentModel.Win32Exception or
+    private static bool Handled(Exception e) => e is IOException or TimeoutException or SocketException or System.ComponentModel.Win32Exception or
         System.Security.Cryptography.CryptographicException or UnauthorizedAccessException or System.Runtime.InteropServices.COMException;
     private void UpdateStatus(string value) {
         if (IsDisposed || !IsHandleCreated) return;
@@ -214,6 +323,6 @@ internal sealed class MainForm : Form
     private async void OnClosing(object? sender, FormClosingEventArgs e) {
         if (closing) return; e.Cancel = true;
         if (busy) { status.Text = "Wait for the current connection/setup operation to finish."; return; }
-        closing = true; Enabled = false; try { await StopAsync(); } finally { Close(); }
+        closing = true; Enabled = false; SavePreferences(); try { await StopAsync(); } finally { Close(); }
     }
 }

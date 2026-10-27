@@ -64,6 +64,7 @@ internal static class DriverSetup
             File.Copy(Path.Combine(root, "vdd_settings.xml"), Path.Combine(settingsRoot, "vdd_settings.xml"));
         progress("Installing the second-monitor device. Accept the Windows publisher prompt if shown…");
         await Task.Run(() => RegisterDevice(Path.Combine(root, "MttVDD.inf")));
+        await Task.Run(() => SetDeviceEnabled(false));
         progress("Driver installed. Return to Dis and choose Second display.");
     }
 
@@ -113,7 +114,7 @@ internal static class DriverSetup
             SetupDiDestroyDeviceInfoList(set);
         }
     }
-    private static bool HasDevice()
+    internal static bool HasDevice()
     {
         Guid classId = DisplayClass;
         nint set = SetupDiGetClassDevs(ref classId, null, 0, 2);
@@ -128,6 +129,37 @@ internal static class DriverSetup
                 if (SetupDiGetDeviceRegistryProperty(set, ref device, 1, out _, value, (uint)value.Length, out _)
                     && System.Text.Encoding.Unicode.GetString(value).Split('\0').Contains(HardwareId, StringComparer.OrdinalIgnoreCase)) return true;
             }
+        }
+        finally { SetupDiDestroyDeviceInfoList(set); }
+    }
+
+    public static void SetDeviceEnabled(bool enabled)
+    {
+        using var identity = WindowsIdentity.GetCurrent();
+        if (!new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator))
+            throw new IOException("Hiding or restoring the virtual adapter requires administrator access.");
+        var adapters = DisplayModes.Enumerate();
+        if (!enabled && adapters.Any(a => a.Virtual && a.Active) && !adapters.Any(a => !a.Virtual && a.Active))
+            throw new IOException("Activate a physical monitor before hiding the only active display.");
+        Guid classId = DisplayClass;
+        nint set = SetupDiGetClassDevs(ref classId, null, 0, 2);
+        if (set == -1) throw new Win32Exception(Marshal.GetLastWin32Error());
+        bool found = false;
+        try
+        {
+            for (uint i = 0; ; i++)
+            {
+                var device = new DeviceInfo { Size = Marshal.SizeOf<DeviceInfo>() };
+                if (!SetupDiEnumDeviceInfo(set, i, ref device)) break;
+                byte[] value = new byte[4096];
+                if (!SetupDiGetDeviceRegistryProperty(set, ref device, 1, out _, value, (uint)value.Length, out _)
+                    || !System.Text.Encoding.Unicode.GetString(value).Split('\0').Contains(HardwareId, StringComparer.OrdinalIgnoreCase)) continue;
+                var change = new PropertyChange { HeaderSize = 8, Function = 0x12, State = enabled ? 1u : 2u, Scope = 1 };
+                if (!SetupDiSetClassInstallParams(set, ref device, ref change, Marshal.SizeOf<PropertyChange>())
+                    || !SetupDiCallClassInstaller(0x12, set, ref device)) throw new Win32Exception(Marshal.GetLastWin32Error());
+                found = true;
+            }
+            if (!found && enabled) throw new IOException("Install the second-display driver first using Set up second display.");
         }
         finally { SetupDiDestroyDeviceInfoList(set); }
     }
@@ -150,6 +182,8 @@ internal static class DriverSetup
         }
     }
     [StructLayout(LayoutKind.Sequential)] private struct DeviceInfo { public int Size; public Guid Class; public uint Instance; public nuint Reserved; }
+    [StructLayout(LayoutKind.Sequential)] private struct PropertyChange { public uint HeaderSize, Function, State, Scope, Profile; }
+    [DllImport("setupapi.dll", EntryPoint = "SetupDiSetClassInstallParamsW", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool SetupDiSetClassInstallParams(nint set, ref DeviceInfo device, ref PropertyChange change, int size);
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)] private struct TrustFile { public uint Size; [MarshalAs(UnmanagedType.LPWStr)] public string Path; public nint Handle, Subject; }
     [StructLayout(LayoutKind.Sequential)] private struct TrustData { public uint Size; public nint Policy, Sip; public uint Ui, Revocation, Choice; public nint File; public uint Action; public nint State, Url; public uint Flags, Context; public nint Signature; }
     [DllImport("wintrust.dll", ExactSpelling = true)] private static extern int WinVerifyTrust(nint window, ref Guid action, ref TrustData data);

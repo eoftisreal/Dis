@@ -1,35 +1,72 @@
-DIS 0.3 PREVIEW - WINDOWS + ANDROID
+DIS 0.4 PREVIEW - QT DESKTOP + ANDROID
 
-Extract this entire folder. Keep Dis.exe, Dis.Codec.dll, Dis.apk and the driver folder together.
+For a single-file setup, open Dis-Setup.exe. It installs the complete app for your Windows account and opens Devices.
+For the portable ZIP, extract and keep this entire folder, including Dis.Engine.exe, Qt DLLs, qml, platforms, codec, APK and driver.
+USB tools are embedded in the engine and prepared automatically. Do not download or copy a separate adb.exe.
+Open Dis.exe. Qt and .NET do not need to be installed on the target PC.
+Build this package locally with BUILD_ALL.cmd. First Android setup: BUILD_ALL.cmd -AcceptAndroidLicenses.
+No GitHub setup is required. Later builds can use -Offline after caches are prepared.
 
 FIRST SETUP
-1. Authorize USB debugging on the Android device. Android Platform Tools must be available on the PC.
-2. Open Dis.exe. Press Install/update Android app to install the bundled Dis.apk.
+1. Authorize USB debugging on the Android device. Dis supplies all required PC USB tools internally.
+2. Open Dis.exe. Go to Devices and press Install receiver to install the bundled Dis.apk.
    If an older preview has an incompatible signing key, uninstall that old Dis app on the phone once, then install again.
-3. Press Set up second display once. Accept the administrator request and the Windows driver-publisher prompt if shown.
+3. In Devices, press Set up display once. Accept the administrator request and the Windows driver-publisher prompt if shown.
    The signed driver is Virtual Display Driver by VirtualDrivers/MikeTheTech (SignPath Foundation).
    Dis does not disable signature enforcement, modify Secure Boot, or install root certificates.
 
 NORMAL CONNECTION
-Choose USB and Second display, then Connect. Android opens and receives the encrypted connection automatically.
+On Display, press Connect display. USB is the default connection.
+Android opens and receives the encrypted connection automatically. Transport options are under Settings.
 No connection link needs to be copied for USB. USB debugging authorization is still required.
+Update the Android receiver as well as the EXE: the receiver includes the fix for connecting while Dis is already open.
+Accept the administrator prompt on Connect. Dis always disables its virtual adapter when idle; this is permanent.
+Disconnect, unplug, failed playback, normal exit, or a crash cleans up the virtual display.
+There is no Mirror screen selector. Use Windows display settings to choose Extend or Duplicate while connected.
+If the phone never acknowledges video, setup times out after 30 seconds on USB or 60 seconds for network pairing.
+If playback stops, Dis removes the screen after a short reconnect grace or stalled-frame timeout.
+The elevated helper independently removes an abandoned screen if the engine becomes unresponsive.
+
+BACKGROUND AND USB START
+Close the window to keep Dis in the system tray. Use the tray menu to open it, connect, disconnect, or quit.
+Enable Settings > Start with Windows to start quietly when signing in.
+Enable Settings > USB autoconnect on Windows and Connection controls > Start display when USB connects on Android.
+Keep Dis running on the PC and authorize USB debugging once. Unlock the phone if required by Android.
+Manual desktop Disconnect pauses autoconnect until the cable is unplugged and replugged.
 
 ORIENTATION
-Windows orientation changes the actual selected Windows monitor; Apply orientation reconnects the stream automatically.
+The Orientation selector changes the Windows virtual monitor; changing it while connected restarts the stream automatically.
 The phone's Auto/Landscape/Portrait selector controls the Android screen orientation separately.
 
+DESKTOP SIZE AND FULL SCREEN
+Match phone shape selects the closest supported 60 Hz desktop mode. Full HD gives more desktop space.
+Large text uses a compact desktop. Desktop size is separate from streamed video quality.
+Android full screen hides its toolbar and system bars. Tap the sliders icon to open orientation and connection controls.
+
+ANDROID CONNECTION DASHBOARD
+Tap the sliders icon during playback, or Connection controls on the phone's idle screen.
+The adjacent lock icon disables touch and pen input to Windows. Tap it again to unlock; video keeps playing.
+Update both Windows and Android for full touch gestures. Tap to click; one-finger swipes use native touch in supported Windows apps.
+Use two fingers to scroll in desktop apps, including horizontal scrolling. A two-finger tap performs right-click.
+Single-finger dragging and stylus pressure remain available. Controls includes a touch-gesture guide.
+Both icons hide after 5 seconds. Tap the screen or press Android Back to reveal them, including while touch is locked.
+Back reveals the session controls instead of closing an active display; disconnect from Controls before leaving with Back.
+Reconnect retries the current pairing without restarting the Windows app. Disconnect stops the phone receiver.
+The dashboard shows stream FPS, decoder FPS, video Mbps, ping RTT, FPS history, resolution, and decoder details.
+Scroll for phone orientation, the optional live-stats overlay, and Copy diagnostics.
+Copy diagnostics copies a local report and excludes pairing credentials. Ping is network roundtrip, not screen latency.
+Android 0.4.1 adds decoder queue-to-release time, input-buffer wait, and ACK-write timing to that report.
+The desktop Display page reports the capture backend, capture/encode time, frame wait, and send time.
+Manual network pairing is available at the bottom of the phone dashboard.
+
 SMOOTHNESS
-Start with 720p smooth and 60 fps. The live status identifies H.264 hardware, H.264 software, or JPEG fallback.
+Start with Fast (720p / 60 fps). Balanced targets 1080p / 30 fps; Sharp targets 1080p / 60 fps.
+The live status identifies H.264 hardware, H.264 software, or JPEG fallback, measured FPS, and frame ACK time.
 H.264 hardware availability depends on the GPU driver. A 60 fps target is not a promise that every device reaches 60 fps.
 Try 1080p detailed after confirming performance. Keep Ethernet/tethering enabled; Dis does not change network routes.
-Android status identifies its decoder and low-latency/realtime/compatibility configuration.
-
-PEN INPUT
-On phones/tablets that recognize a stylus, hover, pressure, tilt, barrel button and eraser are forwarded when input is enabled.
-An active/hovering pen suppresses finger touches. Moving away from the screen restores ordinary finger control.
-Use the updated Windows app with the updated Android receiver for complete hover-exit handling.
 
 NETWORK MODE
-Select the intended Ethernet/Wi-Fi/tethering adapter. Manual network pairing remains under Advanced.
+Select Network under Windows Settings, choose the intended adapter, and copy the connection link.
+On Android, open Connection controls, scroll to Network pairing, paste the link, and press Connect display.
 
 Driver source/provenance, protocol, limitations, and current verification are recorded at github.com/eoftisreal/Dis.
