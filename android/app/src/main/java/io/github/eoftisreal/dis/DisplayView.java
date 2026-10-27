@@ -25,6 +25,8 @@ public final class DisplayView extends SurfaceView {
     private boolean pressed;
     private int pointerId=-1, kind;
     private long lastMove;
+    private boolean stylusInRange;
+    private byte[] lastPointer;
     private final Object surfaceGate=new Object();
     private volatile Runnable surfaceInvalidated;
     private int videoWidth,videoHeight;
@@ -69,10 +71,10 @@ public final class DisplayView extends SurfaceView {
     }
 
     public void configure(boolean input, boolean pen, InputSink sender) {
-        post(() -> { pressed=false; pointerId=-1; inputEnabled=input; penEnabled=pen; sink=sender; });
+        post(() -> { pressed=false; pointerId=-1; stylusInRange=false; lastPointer=null; inputEnabled=input; penEnabled=pen; sink=sender; });
     }
 
-    public void resetInput() { post(() -> { inputEnabled=false; sink=null; pressed=false; pointerId=-1; }); }
+    public void resetInput() { post(() -> { inputEnabled=false; sink=null; pressed=false; pointerId=-1; stylusInRange=false; lastPointer=null; }); }
 
     /** Returns after the frame has been consumed, whether displayed or discarded during a surface transition. */
     public void render(byte[] jpeg, int width, int height) throws IOException {
@@ -112,38 +114,85 @@ public final class DisplayView extends SurfaceView {
         int action=event.getActionMasked();
         RectF rect=content;
         if (rect.width()<=0 || rect.height()<=0) return true;
-        if (action==MotionEvent.ACTION_DOWN) {
-            if (!rect.contains(event.getX(),event.getY())) return true;
-            pointerId=event.getPointerId(0);
-            int tool=event.getToolType(0);
-            kind=(tool==MotionEvent.TOOL_TYPE_STYLUS || tool==MotionEvent.TOOL_TYPE_ERASER) && penEnabled ? 1 : 0;
-            pressed=true; send(event,0,0,rect); return true;
+        int changed=event.getActionIndex();
+        boolean changedPen=penEnabled && isPen(event,changed);
+        if (action==MotionEvent.ACTION_DOWN || (action==MotionEvent.ACTION_POINTER_DOWN && changedPen && kind!=1)) {
+            if (!rect.contains(event.getX(changed),event.getY(changed))) return true;
+            if (!changedPen && stylusInRange) return true;
+            cancelPointer();
+            pointerId=event.getPointerId(changed);
+            kind=changedPen ? 1 : 0;
+            pressed=true; lastMove=0;
+            if (changedPen) requestUnbufferedDispatch(event);
+            send(event,changed,0,rect,-1); return true;
         }
+        if (action==MotionEvent.ACTION_CANCEL) { cancelPointer(); return true; }
         int index=event.findPointerIndex(pointerId);
-        if (!pressed || index<0) return true;
+        if (!pressed) return true;
+        if (index<0) { cancelPointer(); return true; }
         if (action==MotionEvent.ACTION_MOVE) {
             long now=System.nanoTime();
-            if (now-lastMove>=8_000_000L) { send(event,index,1,rect); lastMove=now; }
-        } else if (action==MotionEvent.ACTION_UP || action==MotionEvent.ACTION_CANCEL
+            if (kind==1 || now-lastMove>=8_000_000L) {
+                if (kind==1) for (int h=Math.max(0,event.getHistorySize()-8);h<event.getHistorySize();h++) send(event,index,1,rect,h);
+                send(event,index,1,rect,-1); lastMove=now;
+            }
+        } else if (action==MotionEvent.ACTION_UP
             || (action==MotionEvent.ACTION_POINTER_UP && event.getPointerId(event.getActionIndex())==pointerId)) {
-            send(event,index,action==MotionEvent.ACTION_CANCEL ? 3 : 2,rect);
+            send(event,index,2,rect,-1);
             pressed=false; pointerId=-1;
             if (action==MotionEvent.ACTION_UP) performClick();
         }
         return true;
     }
 
-    private void send(MotionEvent event, int index, int action, RectF rect) {
+    @Override public boolean onHoverEvent(MotionEvent event) {
+        if (!inputEnabled || !penEnabled || sink==null || !isPen(event,event.getActionIndex())) return super.onHoverEvent(event);
+        int action=event.getActionMasked();
+        if (action==MotionEvent.ACTION_HOVER_EXIT) {
+            if (stylusInRange && !pressed) cancelPointer();
+            stylusInRange=false;
+            return true;
+        }
+        if (action!=MotionEvent.ACTION_HOVER_ENTER && action!=MotionEvent.ACTION_HOVER_MOVE) return super.onHoverEvent(event);
+        if (content.width()<=0 || content.height()<=0) return true;
+        if (pressed && kind==1) return true;
+        if (pressed) cancelPointer();
+        stylusInRange=true; kind=1;
+        send(event,event.getActionIndex(),4,content,-1);
+        return true;
+    }
+
+    private static boolean isPen(MotionEvent event,int index) {
+        int tool=event.getToolType(index);
+        return tool==MotionEvent.TOOL_TYPE_STYLUS || tool==MotionEvent.TOOL_TYPE_ERASER;
+    }
+
+    private void cancelPointer() {
+        InputSink output=sink;
+        if (output!=null && lastPointer!=null && (pressed || stylusInRange)) {
+            byte[] cancel=lastPointer.clone(); cancel[1]=3;
+            java.nio.ByteBuffer.wrap(cancel).putFloat(12,0);
+            output.send(cancel);
+        }
+        pressed=false; pointerId=-1; lastPointer=null;
+    }
+
+    private void send(MotionEvent event, int index, int action, RectF rect,int history) {
         InputSink output=sink;
         if (output==null) return;
-        float x=clamp((event.getX(index)-rect.left)/rect.width(),0,1);
-        float y=clamp((event.getY(index)-rect.top)/rect.height(),0,1);
-        float tilt=(float)Math.toDegrees(event.getAxisValue(MotionEvent.AXIS_TILT,index));
-        float orientation=event.getOrientation(index);
+        float px=history<0 ? event.getX(index) : event.getHistoricalX(index,history);
+        float py=history<0 ? event.getY(index) : event.getHistoricalY(index,history);
+        float pressure=history<0 ? event.getPressure(index) : event.getHistoricalPressure(index,history);
+        float tilt=(float)Math.toDegrees(history<0 ? event.getAxisValue(MotionEvent.AXIS_TILT,index)
+            : event.getHistoricalAxisValue(MotionEvent.AXIS_TILT,index,history));
+        float orientation=history<0 ? event.getOrientation(index) : event.getHistoricalOrientation(index,history);
+        float x=clamp((px-rect.left)/rect.width(),0,1);
+        float y=clamp((py-rect.top)/rect.height(),0,1);
         int buttons=(event.getButtonState() & MotionEvent.BUTTON_STYLUS_PRIMARY)!=0 ? 1 : 0;
         if (event.getToolType(index)==MotionEvent.TOOL_TYPE_ERASER) buttons|=2;
-        output.send(Wire.pointer(kind,action,buttons,x,y,clamp(event.getPressure(index),0,1),
-            clamp((float)Math.sin(orientation)*tilt,-90,90),clamp(-(float)Math.cos(orientation)*tilt,-90,90)));
+        lastPointer=Wire.pointer(kind,action,buttons,x,y,action==0 || action==1 ? clamp(pressure,0,1) : 0,
+            clamp((float)Math.sin(orientation)*tilt,-90,90),clamp(-(float)Math.cos(orientation)*tilt,-90,90));
+        output.send(lastPointer);
     }
 
     private static float clamp(float n, float min, float max) { return Float.isNaN(n) ? min : Math.max(min,Math.min(max,n)); }

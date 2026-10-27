@@ -20,11 +20,50 @@ public final class H264Decoder implements AutoCloseable {
     private final ConcurrentHashMap<Long,Integer> pending=new ConcurrentHashMap<>();
     private final Thread output;
     private final DisplayView view;
+    private final String description;
 
     public H264Decoder(DisplayView view,int width,int height,int fps,byte[] configuration,Ack ack,Failure failure) throws IOException {
         this.ack=ack; this.failure=failure; this.view=view;
         byte[][] csd=H264ParameterSets.parse(configuration);
         Surface surface=view.awaitSurface(3000);
+        Started started=start(surface,width,height,fps,csd);
+        codec=started.codec;
+        description=started.description;
+        view.setVideoGeometry(width,height);
+        output=new Thread(this::drain,"Dis video output"); output.start();
+    }
+
+    public String description() { return description; }
+
+    private static Started start(Surface surface,int width,int height,int fps,byte[][] csd) throws IOException {
+        Exception last=null;
+        for (boolean tuned:new boolean[]{true,false}) {
+            MediaCodec candidate=null;
+            try {
+                candidate=MediaCodec.createDecoderByType("video/avc");
+                MediaFormat format=format(width,height,fps,csd);
+                boolean lowLatency=false;
+                if (tuned) {
+                    format.setInteger(MediaFormat.KEY_PRIORITY,0);
+                    format.setInteger(MediaFormat.KEY_OPERATING_RATE,fps);
+                    if (Build.VERSION.SDK_INT>=30 && candidate.getCodecInfo().getCapabilitiesForType("video/avc")
+                        .isFeatureSupported(android.media.MediaCodecInfo.CodecCapabilities.FEATURE_LowLatency)) {
+                        format.setInteger(MediaFormat.KEY_LOW_LATENCY,1);
+                        lowLatency=true;
+                    }
+                }
+                candidate.configure(format,surface,null,0);
+                candidate.start();
+                return new Started(candidate,candidate.getName()+(lowLatency ? " / low latency" : tuned ? " / realtime" : " / compatibility"));
+            } catch (IOException | RuntimeException e) {
+                last=e;
+                if (candidate!=null) try { candidate.release(); } catch (RuntimeException ignored) { }
+            }
+        }
+        throw new IOException("Android H.264 decoder could not start",last);
+    }
+
+    private static MediaFormat format(int width,int height,int fps,byte[][] csd) {
         MediaFormat format=MediaFormat.createVideoFormat("video/avc",width,height);
         format.setByteBuffer("csd-0",ByteBuffer.wrap(csd[0])); format.setByteBuffer("csd-1",ByteBuffer.wrap(csd[1]));
         format.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE,Wire.MAX_FRAME);
@@ -32,14 +71,13 @@ public final class H264Decoder implements AutoCloseable {
         format.setInteger(MediaFormat.KEY_COLOR_STANDARD,MediaFormat.COLOR_STANDARD_BT709);
         format.setInteger(MediaFormat.KEY_COLOR_RANGE,MediaFormat.COLOR_RANGE_LIMITED);
         format.setInteger(MediaFormat.KEY_COLOR_TRANSFER,MediaFormat.COLOR_TRANSFER_SDR_VIDEO);
-        codec=MediaCodec.createDecoderByType("video/avc");
-        if (Build.VERSION.SDK_INT>=30 && codec.getCodecInfo().getCapabilitiesForType("video/avc")
-            .isFeatureSupported(android.media.MediaCodecInfo.CodecCapabilities.FEATURE_LowLatency))
-            format.setInteger(MediaFormat.KEY_LOW_LATENCY,1);
-        try { codec.configure(format,surface,null,0); codec.start(); }
-        catch (RuntimeException e) { codec.release(); throw new IOException("Android H.264 decoder could not start",e); }
-        view.setVideoGeometry(width,height);
-        output=new Thread(this::drain,"Dis video output"); output.start();
+        return format;
+    }
+
+    private static final class Started {
+        final MediaCodec codec;
+        final String description;
+        Started(MediaCodec codec,String description) { this.codec=codec; this.description=description; }
     }
     public void queue(byte[] data,long pts,int sequence) throws IOException {
         if (!running.get()) throw new IOException("Video decoder stopped");
@@ -64,7 +102,9 @@ public final class H264Decoder implements AutoCloseable {
                 if (index<0) continue;
                 Integer sequence=pending.remove(info.presentationTimeUs);
                 boolean render=sequence!=null && (info.flags & MediaCodec.BUFFER_FLAG_CODEC_CONFIG)==0;
-                codec.releaseOutputBuffer(index,render);
+                // Host PTS identifies an access unit; only the phone's clock schedules its Surface.
+                if (render) codec.releaseOutputBuffer(index,System.nanoTime());
+                else codec.releaseOutputBuffer(index,false);
                 if (sequence!=null) ack.consumed(sequence);
             }
         } catch (IOException | RuntimeException e) {

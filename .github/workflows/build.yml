@@ -1,7 +1,7 @@
 name: Build and verify
 on:
   push:
-    branches: [main, feature/smooth-display-v2]
+    branches: [main, feature/smooth-display-v2, feature/apk-reference-v3]
   pull_request:
   workflow_dispatch:
 permissions:
@@ -98,17 +98,25 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force artifacts/java-tests | Out-Null
-          javac -d artifacts/java-tests android/app/src/main/java/io/github/eoftisreal/dis/Wire.java android/app/src/main/java/io/github/eoftisreal/dis/ConnectionSpec.java android/app/src/main/java/io/github/eoftisreal/dis/CertificatePin.java android/app/src/main/java/io/github/eoftisreal/dis/H264ParameterSets.java tests/java/WireTest.java
+          javac -d artifacts/java-tests android/app/src/main/java/io/github/eoftisreal/dis/Wire.java android/app/src/main/java/io/github/eoftisreal/dis/ConnectionSpec.java android/app/src/main/java/io/github/eoftisreal/dis/CertificatePin.java android/app/src/main/java/io/github/eoftisreal/dis/H264ParameterSets.java android/app/src/main/java/io/github/eoftisreal/dis/InputQueue.java tests/java/WireTest.java tests/java/InputQueueTest.java
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           java -cp artifacts/java-tests io.github.eoftisreal.dis.WireTest
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          java -cp artifacts/java-tests io.github.eoftisreal.dis.InputQueueTest
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Install Android SDK platform
         shell: pwsh
         run: |
           & "$env:ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager.bat" 'platforms;android-35' 'build-tools;35.0.0'
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Build and lint Android
-        run: gradle -p android assembleDebug lintDebug --console=plain --no-daemon
+      - name: Build, test Android input and lint
+        run: gradle -p android assembleDebug testDebugUnitTest lintDebug --console=plain --no-daemon
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: Dis-Android-Test-Reports
+          path: android/app/build/reports/tests/
+          if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
         with:
           name: Dis-Android-preview

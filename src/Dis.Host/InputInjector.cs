@@ -8,7 +8,7 @@ internal sealed class InputInjector : IDisposable
 {
     private readonly Rectangle target;
     private readonly nint pen = CreateSyntheticPointerDevice(3, 1, 3);
-    private bool mouseDown, penDown;
+    private bool mouseDown, penDown, penInRange;
     private Point lastPen;
     public bool PenAvailable => pen != 0;
 
@@ -50,16 +50,24 @@ internal sealed class InputInjector : IDisposable
         {
             case PointerAction.Down:
                 if (penDown) return;
-                flags = 0x10000 | 0x2 | 0x4 | 0x10; penDown = true; break;
+                flags = 0x10000 | 0x2 | 0x4 | 0x10; penDown = true; penInRange = true; break;
             case PointerAction.Move:
                 if (penDown) flags |= 0x4 | 0x10;
+                penInRange = true;
+                break;
+            case PointerAction.Hover:
+                if (penDown) return;
+                penInRange = true;
                 break;
             case PointerAction.Up:
-            case PointerAction.Cancel:
                 if (!penDown) return;
                 flags = 0x40000 | 0x2;
-                if (e.Action == PointerAction.Cancel) flags |= 0x8000;
-                penDown = false;
+                penDown = false; penInRange = true;
+                break;
+            case PointerAction.Cancel:
+                if (!penDown && !penInRange) return;
+                flags = penDown ? 0x40000 | 0x8000 : 0x20000;
+                penDown = false; penInRange = false;
                 break;
         }
         lastPen = p;
@@ -87,7 +95,7 @@ internal sealed class InputInjector : IDisposable
         }
         if (pen != 0)
         {
-            try { if (penDown) InjectPen(new(PointerKind.Pen, PointerAction.Cancel, 0, 0, 0, 0, 0, 0), lastPen); }
+            try { if (penDown || penInRange) InjectPen(new(PointerKind.Pen, PointerAction.Cancel, 0, 0, 0, 0, 0, 0), lastPen); }
             catch (Win32Exception) { }
             DestroySyntheticPointerDevice(pen);
         }

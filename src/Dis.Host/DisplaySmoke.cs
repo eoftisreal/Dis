@@ -21,12 +21,26 @@ internal static class DisplaySmoke
         DisplayModes.Rotate(name, 0);
         if (portrait.Height <= portrait.Width) throw new IOException("Virtual monitor did not change to portrait.");
         await Task.Run(() => CaptureProbe(DisplayModes.Bounds(name)));
+        VerifyPenInput(DisplayModes.Bounds(name));
         File.WriteAllText(output, JsonSerializer.Serialize(new
         {
             virtualDisplay = name, landscape.Width, landscape.Height,
             portraitWidth = portrait.Width, portraitHeight = portrait.Height,
+            penHoverContactAndLeave = true,
             adapters = DisplayModes.Enumerate()
         }, new JsonSerializerOptions { WriteIndented = true }));
+    }
+
+    private static void VerifyPenInput(Rectangle bounds)
+    {
+        using var input = new InputInjector(bounds);
+        if (!input.PenAvailable) throw new IOException("Windows synthetic pen is unavailable.");
+        foreach (var action in new[] { PointerAction.Hover, PointerAction.Down, PointerAction.Move,
+            PointerAction.Up, PointerAction.Hover, PointerAction.Cancel, PointerAction.Hover, PointerAction.Cancel })
+        {
+            input.Apply(new(PointerKind.Pen, action, 0, .5f, .5f, .6f, 10, -10));
+            Thread.Sleep(5);
+        }
     }
 
     private static void CaptureProbe(Rectangle bounds)

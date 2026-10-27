@@ -9,7 +9,6 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
-import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLHandshakeException;
@@ -24,7 +23,7 @@ public final class DisplayClient implements AutoCloseable, DisplayView.InputSink
     private final DisplayView view;
     private final Listener listener;
     private final AtomicBoolean running=new AtomicBoolean(true);
-    private final ArrayBlockingQueue<byte[]> inputs=new ArrayBlockingQueue<>(128);
+    private final InputQueue inputs=new InputQueue();
     private final Object writes=new Object();
     private volatile Socket socket;
     private Thread worker;
@@ -100,13 +99,18 @@ public final class DisplayClient implements AutoCloseable, DisplayView.InputSink
                                 else surfaceReset.set(true);
                                 closeTransport();
                             });
-                    } catch (IOException e) { forceJpeg=true; throw e; }
+                    } catch (IOException e) {
+                        if (!surfaceReset.get() && view.getHolder().getSurface().isValid()) forceJpeg=true;
+                        else surfaceReset.set(true);
+                        throw e;
+                    }
                     view.setSurfaceInvalidated(() -> { surfaceReset.set(true); closeTransport(); });
                 }
                 view.setVideoGeometry(width,height);
                 connected=true;
                 view.configure(config.getBoolean("input"),config.getBoolean("pen"),this);
-                listener.status(config.optString("encoder",codec)+" · "+width+" × "+height+" · encrypted");
+                listener.status(config.optString("encoder",codec)+" · "+width+" × "+height
+                    +(decoder!=null ? " · "+decoder.description() : "")+" · encrypted");
                 writer=new Thread(() -> {
                     try {
                         while (running.get() && session.get()) write(output,new Wire.Packet(Wire.INPUT,0,inputs.take()));
