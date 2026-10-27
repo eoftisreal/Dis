@@ -40,7 +40,7 @@ The [machine-readable evidence](research/superdisplay-apk-1.2.22.json) records A
 
 These findings describe code paths visible in this supplied version. No phone/GPU was exercised during the static analysis. Availability and performance of hardware decoders still depend on the actual device.
 
-## Changes implemented in Dis 0.3
+## Changes implemented in Dis
 
 1. The Android H.264 decoder requests realtime priority and its negotiated operating rate, enables supported low-latency mode, and retries without optional hints before falling back to JPEG. The status identifies the Android codec and selected configuration. Capability queries and failed initialization now release the attempted codec.
 2. Video is released using the phone's monotonic clock. Host timestamps remain output/ACK identifiers; cross-device clocks are never treated as synchronized.
@@ -54,8 +54,8 @@ The Android APIs above are documented in the official [MediaCodec reference](htt
 ## Next work, kept separate from completed changes
 
 - Negotiate cursor shape/position separately, exclude the cursor from video when negotiated, and render the exact Windows cursor locally. This needs scaling, rotation, hotspot, visibility, shape-size bounds and compatibility tests on both endpoints.
-- Add multi-touch, keyboard and wheel/gesture messages with validated packet limits and corresponding Windows input support.
-- Add remembered device profiles and diagnostics for encoder/decoder selection, local queueing and round-trip time.
+- Extend the current single native touch contact and two-finger wheel/right-click gestures to independent simultaneous Windows touch contacts, plus keyboard input.
+- Add remembered device profiles; the merged 0.4.4 build already provides encoder/decoder, frame timing, queue timing, and round-trip diagnostics.
 - Benchmark asynchronous decoding, GPU-to-encoder texture transfer and adaptive quality on the user's actual PC/phone.
 - Consider optional AOAP only after testing simultaneous Ethernet/tethering/file-transfer behavior on the target phone; it is not the default connection path in this update.
 
@@ -71,3 +71,4 @@ py tools\inspect_android_apk.py "SuperDisplay (com.kelocube.mirrorclient) [v.1.2
 ```
 
 JADX may exit nonzero because of errors in unrelated dependency classes while still producing the focused files; inspect the diagnostics and missing-method counts. Run the inventory without `--jadx-output` for APK/DEX metadata alone. The inventory never executes the uploaded application. Consult [current verification](STATUS.md) for the tests actually completed on the delivered Dis revision.
+

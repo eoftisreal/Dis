@@ -9,16 +9,17 @@
 
 The [verification record](STATUS.md) includes virtual-display installation, portrait rotation, actual captured pixels, and independent H.264 decoding on a Windows VM. Real-device behavior and comparative performance remain separate acceptance gates.
 
-## Added in the 0.3 preview
+## Added in the 0.3 local preview
 
-- Guarded Android realtime/low-latency configuration, a compatibility retry, decoder identification and phone-clock Surface scheduling.
-- Stylus hover/range cleanup, finger-to-pen takeover, palm suppression around a recognized pen, historical pressure samples and bounded movement coalescing.
-- A reproducible static analysis of the supplied SuperDisplay 1.2.22 APK. Its separate cursor layer, multi-touch/keyboard channels and per-device profiles inform the next milestones below; those features are not implemented by the research report itself.
+- Local EXE/APK/ZIP builds with discovered C++ tools, cached prerequisites, offline repeat builds, logs, and file-hash manifests.
+- GPU resizing before CPU readback, capture after transport capacity becomes available, and frame-acknowledgement feedback.
+- Remembered preferences, performance presets, phone-shaped desktop modes, immersive Android full screen, and warm USB handoff handling.
+- Automatic virtual desktop detachment and permanent adapter hiding between sessions, including a helper that survives an app crash.
 
 ## P0: prove the basic product on hardware
 
 1. Validate the signed VirtualDrivers package on physical PCs and document supported Windows/GPU combinations. Development of the original Dis IddCx driver still requires matching SDK/WDK verification and a separate signing plan.
-2. Validate installation, uninstall, device loss, Windows sleep/resume, monitor moves, DPI changes, rotation, and GPU reset. The current monitor intentionally remains installed after streaming stops; automatic session attach/detach is future work.
+2. Expand installation, uninstall, device loss, Windows sleep/resume, monitor moves, DPI changes, rotation, and GPU-reset coverage. Basic attach/detach/hide and warm receiver handoff are implemented; broader hardware and recovery coverage remains necessary.
 3. Pass every [network coexistence test](NETWORK_TESTS.md), especially USB tethering plus display on one cable. Record device, USB mode, adapter, routes, throughput, and reconnect behavior. Do not promise every OEM exposes ADB and tethering simultaneously.
 4. Test actual Windows/Android touch, pressure, tilt, eraser, negative monitor coordinates, disconnect during dragging/drawing, app backgrounding, and multiple rapid reconnects.
 5. Validate the generated Windows EXE and Android APK on real devices. A compile is not an end-to-end playback test.
@@ -34,10 +35,10 @@ The [verification record](STATUS.md) includes virtual-display installation, port
 ## P1: make setup and recovery simple
 
 - Offline QR pairing, remembered device identities, explicit revocation, and stable certificate storage protected by Windows credentials.
-- Improve installation diagnostics and uninstall handling for the signed driver. Normal streaming already runs without elevation.
+- Improve installation diagnostics and uninstall handling for the signed driver. The desktop and installer run per user; enabling the idle-disabled adapter still asks Windows for administrator approval when connecting.
 - Clear transport selection, adapter/link diagnostics, reconnection after USB re-enumeration, and automated tunnel recreation without replacing someone else's ADB mappings.
 - Automatic virtual monitor attach/detach on authenticated device sessions, more native display modes, and per-device profiles.
-- Keyboard, scroll, multi-touch gestures, hover, pressure curves, and configurable pen buttons.
+- Keyboard, independent simultaneous multi-touch contacts, pressure curves, and configurable pen buttons. Single native touch, two-finger scrolling/right-click, and stylus hover/history are implemented in 0.4.4.
 
 ## P2: polish and expand
 

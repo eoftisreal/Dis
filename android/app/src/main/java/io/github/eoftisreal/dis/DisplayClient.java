@@ -9,6 +9,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLHandshakeException;
@@ -18,7 +19,13 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 public final class DisplayClient implements AutoCloseable, DisplayView.InputSink {
-    public interface Listener { void status(String text); void ended(); }
+    public enum Phase { CONNECTING, AUTHENTICATING, STREAMING, RETRYING, ERROR }
+    public interface Listener {
+        void status(String text); void ended();
+        void phase(Phase value);
+        void video(String codec,String encoder,String decoder,int width,int height,int targetFps);
+        void metrics(StreamStats.Sample value);
+    }
     private final ConnectionSpec spec;
     private final DisplayView view;
     private final Listener listener;
@@ -40,24 +47,27 @@ public final class DisplayClient implements AutoCloseable, DisplayView.InputSink
             while (running.get()) {
                 long started=System.nanoTime();
                 try { streamOnce(); break; }
-                catch (SSLHandshakeException e) { listener.status("Certificate verification failed. Copy a fresh connection link from Windows."); break; }
-                catch (ProtocolException e) { listener.status(e.getMessage()); break; }
+                catch (SSLHandshakeException e) { listener.phase(Phase.ERROR);listener.status("Certificate verification failed. Start a fresh connection from Windows."); break; }
+                catch (ProtocolException e) { listener.phase(Phase.ERROR);listener.status(e.getMessage()); break; }
                 catch (IOException e) {
                     if (!running.get()) break;
                     if (surfaceReset.getAndSet(false)) { Thread.sleep(200); continue; }
                     if (System.nanoTime()-started>10_000_000_000L) attempt=0;
-                    if (++attempt>5) { listener.status("Disconnected: "+e.getMessage()); break; }
+                    if (++attempt>5) { listener.phase(Phase.ERROR);listener.status("Disconnected: "+e.getMessage()); break; }
+                    listener.phase(Phase.RETRYING);
                     listener.status("Reconnecting… ("+attempt+"/5)");
                     Thread.sleep(Math.min(4000,(1L<<Math.min(attempt-1,2))*500));
                 }
             }
-        } catch (GeneralSecurityException e) { listener.status("Cannot initialize encrypted connection"); }
+        } catch (GeneralSecurityException e) { listener.phase(Phase.ERROR);listener.status("Cannot initialize encrypted connection"); }
         catch (InterruptedException e) { Thread.currentThread().interrupt(); }
         finally { close(); listener.ended(); }
     }
 
     private void streamOnce() throws IOException, GeneralSecurityException {
+        listener.phase(Phase.CONNECTING);
         listener.status("Connecting…");
+        StreamStats metrics=new StreamStats();
         inputs.clear(); view.resetInput();
         Socket raw=new Socket(); socket=raw;
         Thread writer=null;
@@ -72,6 +82,8 @@ public final class DisplayClient implements AutoCloseable, DisplayView.InputSink
             SSLSocket tls=(SSLSocket)context.getSocketFactory().createSocket(raw,spec.host,spec.port,true);
             socket=tls; tls.setSoTimeout(10000);
             // TLS 1.2 is mandatory; TLS 1.3 is negotiated by supported Android versions.
+            listener.phase(Phase.AUTHENTICATING);
+            listener.status("Verifying the encrypted connection…");
             tls.startHandshake();
             DataInputStream input=new DataInputStream(tls.getInputStream());
             DataOutputStream output=new DataOutputStream(tls.getOutputStream());
@@ -93,14 +105,18 @@ public final class DisplayClient implements AutoCloseable, DisplayView.InputSink
                     if (csd.type!=Wire.CODEC_CONFIG || csd.sequence!=0) throw new ProtocolException("Missing codec configuration");
                     try {
                         decoder=new H264Decoder(view,width,height,config.getInt("fps"),csd.payload,
-                            sequence -> write(output,new Wire.Packet(Wire.ACK,sequence,new byte[0])),
-                            error -> {
-                                if (!surfaceReset.get() && view.getHolder().getSurface().isValid()) forceJpeg=true;
+                            (sequence,decoderNanos,inputWaitNanos) -> {
+                                metrics.decodedFrame(decoderNanos,inputWaitNanos);
+                                long started=System.nanoTime();write(output,new Wire.Packet(Wire.ACK,sequence,new byte[0]));
+                                metrics.ackWrite(System.nanoTime()-started);
+                            },
+                            (error,codecFailure) -> {
+                                if (!surfaceReset.get() && view.getHolder().getSurface().isValid()) { if(codecFailure) forceJpeg=true; }
                                 else surfaceReset.set(true);
                                 closeTransport();
                             });
                     } catch (IOException e) {
-                        if (!surfaceReset.get() && view.getHolder().getSurface().isValid()) forceJpeg=true;
+                        if(view.getHolder().getSurface().isValid()) forceJpeg=true;
                         else surfaceReset.set(true);
                         throw e;
                     }
@@ -108,12 +124,29 @@ public final class DisplayClient implements AutoCloseable, DisplayView.InputSink
                 }
                 view.setVideoGeometry(width,height);
                 connected=true;
-                view.configure(config.getBoolean("input"),config.getBoolean("pen"),this);
-                listener.status(config.optString("encoder",codec)+" · "+width+" × "+height
-                    +(decoder!=null ? " · "+decoder.description() : "")+" · encrypted");
+                view.configure(config.getBoolean("input"),config.getBoolean("pen"),config.optBoolean("touch",false),config.optBoolean("gestures",false),this);
+                listener.video(codec,config.optString("encoder",codec),decoder!=null ? decoder.description() : "Android JPEG decoder",width,height,config.getInt("fps"));
+                listener.phase(Phase.STREAMING);
+                String interaction=!config.getBoolean("input")?"viewing only":config.optBoolean("touch",false)?"native touch":"mouse compatibility";
+                listener.status(config.optString("encoder",codec)+" · "+width+" × "+height+" · encrypted · "+interaction
+                    +(config.optBoolean("gestures",false)?" · two-finger scroll":""));
                 writer=new Thread(() -> {
                     try {
-                        while (running.get() && session.get()) write(output,new Wire.Packet(Wire.INPUT,0,inputs.take()));
+                        long nextPing=System.nanoTime();int pingSequence=0;
+                        while (running.get() && session.get()) {
+                            byte[] pointer=inputs.poll(100,TimeUnit.MILLISECONDS);
+                            if(pointer!=null)write(output,new Wire.Packet(Wire.INPUT,0,pointer));
+                            long now=System.nanoTime();
+                            if(now>=nextPing) {
+                                int sequence=++pingSequence;
+                                write(output,new Wire.Packet(Wire.PING,sequence,metrics.ping(sequence)));
+                                nextPing=now+1_000_000_000L;
+                            }
+                            StreamStats.Sample sample=metrics.sample();if(sample!=null){
+                                listener.metrics(sample);
+                                android.util.Log.d("DisPerformance",String.format(java.util.Locale.US,"%.1f fps; decoder %.1f ms; input %.1f ms; ACK %.1f ms",sample.streamFps,sample.decoderMs,sample.inputWaitMs,sample.ackWriteMs));
+                            }
+                        }
                     } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
                     catch (IOException e) { try { tls.close(); } catch (IOException ignored) { } }
                 },"Dis input");
@@ -122,6 +155,7 @@ public final class DisplayClient implements AutoCloseable, DisplayView.InputSink
                 while (running.get()) {
                     packet=Wire.read(input);
                     if (packet.type==Wire.FRAME) {
+                        metrics.receivedFrame(packet.payload.length+16);
                         if (packet.sequence!=lastSequence+1) throw new ProtocolException("Unexpected frame sequence");
                         lastSequence=packet.sequence;
                         ByteBuffer body=ByteBuffer.wrap(packet.payload).order(ByteOrder.BIG_ENDIAN);
@@ -132,9 +166,10 @@ public final class DisplayClient implements AutoCloseable, DisplayView.InputSink
                         if (decoder!=null) decoder.queue(jpeg,pts,packet.sequence);
                         else {
                             view.render(jpeg,width,height);
+                            metrics.decodedFrame();
                             write(output,new Wire.Packet(Wire.ACK,packet.sequence,new byte[0]));
                         }
-                    } else if (packet.type==Wire.PONG) { /* Reserved for future round-trip measurements. */ }
+                    } else if (packet.type==Wire.PONG) { metrics.pong(packet.sequence,packet.payload); }
                     else throw new ProtocolException("Unexpected server message");
                 }
             } catch (JSONException e) { throw new ProtocolException("Invalid server configuration"); }
@@ -158,13 +193,20 @@ public final class DisplayClient implements AutoCloseable, DisplayView.InputSink
 
     @Override public void send(byte[] pointer) {
         if (running.get() && connected && !inputs.offer(pointer)) {
+            listener.phase(Phase.ERROR);
             listener.status("Input connection stalled. Reconnect to continue."); close();
         }
     }
 
     @Override public void close() {
-        running.set(false); connected=false; view.resetInput();
-        try { if (socket!=null) socket.close(); } catch (IOException ignored) { }
+        if (!running.getAndSet(false)) return;
+        connected=false; view.resetInput();
+        // TLS close sends close_notify. Activity callbacks and connection buttons
+        // must never perform that network operation on Android's main thread.
+        Socket closing=socket;
+        if (closing!=null) new Thread(() -> {
+            try { closing.close(); } catch (IOException ignored) { }
+        },"Dis transport close").start();
         if (worker!=null) worker.interrupt();
     }
 

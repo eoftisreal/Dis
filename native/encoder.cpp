@@ -236,11 +236,21 @@ public:
         result.clear();
         if (!bgra || int64_t(abs(stride)) < int64_t(width)*4) return E_INVALIDARG;
         CHECK_HR(Pump());
-        if (asynchronous && outputReady) return Output(outputPts, key);
+        // Drain completed output first: some GPU transforms request their next
+        // input only after ProcessOutput. Still feed this capture in the same call.
+        // Returning immediately after drain wastes alternate host capture slots.
+        bool haveOutput = false;
+        if (asynchronous && outputReady) {
+            HRESULT hr = Output(outputPts, key);
+            if (FAILED(hr)) return hr;
+            haveOutput = hr == S_OK;
+            CHECK_HR(Pump());
+        }
         if (!asynchronous || (inputReady && pending < 4)) {
             HRESULT hr = Input(bgra, stride, pts);
             if (FAILED(hr) && hr != MF_E_NOTACCEPTING) return hr;
         }
+        if (haveOutput) return S_OK;
         // Give an asynchronous GPU one small scheduling interval, not a complete frame round trip.
         ULONGLONG until = GetTickCount64() + 4;
         do {

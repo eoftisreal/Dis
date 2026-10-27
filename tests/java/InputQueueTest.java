@@ -41,6 +41,16 @@ public final class InputQueueTest {
         require(!queue.offer(pointer(1,0,0,129))); // Fail closed if contact transitions alone fill the queue.
         queue.clear();
 
+        require(queue.poll(1,TimeUnit.MILLISECONDS)==null);
+        require(queue.offer(pointer(2,0,0,1)));
+        for(int n=0;n<20;n++)require(queue.offer(pointer(0,5,0,n)));
+        require(queue.offer(pointer(0,6,0,21)));
+        require(queue.offer(pointer(2,3,0,22)));
+        require(queue.poll(1,TimeUnit.SECONDS)[0]==2);
+        for(int n=0;n<20;n++)require(value(queue.poll(1,TimeUnit.SECONDS))==n);
+        require(queue.poll(1,TimeUnit.SECONDS)[1]==6);
+        require(queue.poll(1,TimeUnit.SECONDS)[1]==3);
+
         AtomicBoolean cancelled=new AtomicBoolean();
         CountDownLatch entered=new CountDownLatch(1);
         Thread consumer=new Thread(() -> {
@@ -63,3 +73,4 @@ public final class InputQueueTest {
     private static int value(byte[] packet) { return java.nio.ByteBuffer.wrap(packet).getInt(20); }
     private static void require(boolean valid) { if (!valid) throw new AssertionError(); }
 }
+

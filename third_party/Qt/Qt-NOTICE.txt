@@ -1,0 +1,16 @@
+This application uses Qt 6.8.3, copyright The Qt Company Ltd. and its contributors.
+
+Qt is dynamically linked. The supplied Qt libraries are unmodified and may be
+replaced with compatible modified builds. The Qt components used by this application
+are available under the GNU Lesser General Public License version 3. See the
+accompanying LGPL-3.0-only.txt and GPL-3.0-only.txt (which LGPLv3 incorporates).
+
+The corresponding complete Qt source packages, including source for its bundled
+third-party code, are available from the Qt Project:
+https://download.qt.io/archive/qt/6.8/6.8.3/submodules/
+https://code.qt.io/cgit/qt/
+
+Qt's copyright and third-party license notices are also included in Qt-SBOM.
+The Dis desktop interface source is in ui/ and is built with CMake and a standard
+Qt 6.8 MSVC x64 development kit. No Qt license restricts replacement or debugging
+of modified Qt libraries in this application.

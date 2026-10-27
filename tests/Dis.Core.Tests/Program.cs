@@ -9,6 +9,58 @@ using System.Security.Cryptography.X509Certificates;
 using Dis.Core;
 
 int passed = 0;
+await Check("touch and scrolling packets match Java and reject invalid gesture combinations", async () =>
+{
+    var scrollBytes = Convert.FromHexString("000500003f0000003e8000000000000041f00000c2700000");
+    var scroll = InputEvent.Parse(scrollBytes);
+    Require(scroll.Kind == PointerKind.Mouse && scroll.Action == PointerAction.Scroll && scroll.TiltX == 30 && scroll.TiltY == -60);
+    var touch = InputEvent.Parse(Convert.FromHexString("020000003f0000003e8000003f4000000000000000000000"));
+    Require(touch.Kind == PointerKind.Touch && touch.Action == PointerAction.Down && touch.Pressure == .75f);
+    scrollBytes[0] = 2;
+    await Throws<InvalidDataException>(() => { InputEvent.Parse(scrollBytes); return Task.CompletedTask; });
+    scrollBytes[0] = 0; scrollBytes[3] = 1;
+    await Throws<InvalidDataException>(() => { InputEvent.Parse(scrollBytes); return Task.CompletedTask; });
+});
+await Check("embedded USB tools restore missing and damaged files without an external ADB path", () =>
+{
+    using var files = new AdbTestDirectory();
+    using var data = new MemoryStream();
+    using (var archive = new System.IO.Compression.ZipArchive(data, System.IO.Compression.ZipArchiveMode.Create, true))
+        foreach (string name in UsbToolBundle.RequiredFiles)
+        {
+            using var stream = archive.CreateEntry(name).Open();
+            stream.Write(System.Text.Encoding.UTF8.GetBytes("bundled-test-" + name));
+        }
+    byte[] bytes = data.ToArray();
+    string cache = Path.Combine(files.Locations.AppDirectory, "private-usb-cache");
+    string executable = UsbToolBundle.Prepare(bytes, cache);
+    Require(File.ReadAllText(executable) == "bundled-test-adb.exe");
+    string library = Path.Combine(Path.GetDirectoryName(executable)!, "AdbWinApi.dll");
+    File.Delete(executable); File.WriteAllText(library, "corrupted");
+    Require(UsbToolBundle.Prepare(bytes, cache) == executable);
+    Require(File.ReadAllText(executable) == "bundled-test-adb.exe" && File.ReadAllText(library) == "bundled-test-AdbWinApi.dll");
+    return Task.CompletedTask;
+});
+await Check("permanent adapter cleanup overrides legacy mirror and idle preferences", () =>
+{
+    var legacy = new Dis.Host.HostPreferences(Mode: 1, HideIdle: false, MirrorDisplay: "old display", Adb: "deleted-old-build/adb.exe", Quality: 2);
+    var current = legacy.EnforceConnectionBehavior();
+    Require(current.Mode == 0 && current.HideIdle && current.MirrorDisplay == "" && current.Adb == "" && current.Version == 3 && current.Quality == 2);
+    Require(new Dis.Host.HostPreferences().HideIdle);
+    return Task.CompletedTask;
+});
+await Check("receiver watchdog cleans failed startup, disconnect, and stalled video", () =>
+{
+    Require(!ReceiverWatchdog.Expired(TimeSpan.FromSeconds(29), null, false, true));
+    Require(ReceiverWatchdog.Expired(TimeSpan.FromSeconds(30), null, true, true));
+    Require(!ReceiverWatchdog.Expired(TimeSpan.FromSeconds(59), null, false, false));
+    Require(ReceiverWatchdog.Expired(TimeSpan.FromSeconds(60), null, false, false));
+    Require(!ReceiverWatchdog.Expired(TimeSpan.FromHours(1), TimeSpan.FromSeconds(2), false, true));
+    Require(ReceiverWatchdog.Expired(TimeSpan.FromHours(1), TimeSpan.FromSeconds(3), false, true));
+    Require(!ReceiverWatchdog.Expired(TimeSpan.FromHours(1), TimeSpan.FromSeconds(9), true, true));
+    Require(ReceiverWatchdog.Expired(TimeSpan.FromHours(1), TimeSpan.FromSeconds(10), true, true));
+    return Task.CompletedTask;
+});
 await Check("cross-language golden packet", async () =>
 {
     using var output = new MemoryStream();
@@ -92,6 +144,21 @@ await Check("pairing token rejects malformed and unrelated secrets", () =>
     var token = new PairingToken();
     Require(token.Matches(token.Value) && token.Matches(token.Value.ToUpperInvariant()));
     Require(!token.Matches(null) && !token.Matches("short") && !token.Matches(new string('z', 64)) && !token.Matches(new PairingToken().Value));
+    return Task.CompletedTask;
+});
+await Check("USB autoconnect respects manual disconnect, replug, preferences, and failed attempts", () =>
+{
+    var usb = new UsbAutoconnect();
+    Require(!usb.TryBegin(true, false));
+    usb.Observe("phone");
+    Require(!usb.TryBegin(false, false) && !usb.TryBegin(true, true));
+    Require(usb.TryBegin(true, false) && !usb.TryBegin(true, false));
+    usb.PreferenceDisabled(); Require(usb.TryBegin(true, false));
+    usb.Suppress(); usb.PreferenceDisabled(); Require(!usb.TryBegin(true, false));
+    usb.Observe("phone"); Require(!usb.TryBegin(true, false));
+    usb.Observe(null); usb.Observe("phone"); Require(usb.TryBegin(true, false));
+    usb.Observe("other"); Require(usb.TryBegin(true, false));
+    usb.Reset(); Require(usb.TryBegin(true, false));
     return Task.CompletedTask;
 });
 await Check("TLS loopback transports real framed messages with a pinned certificate", async () =>
@@ -196,6 +263,17 @@ await Check("H.264 parameter-set framing and malformed lengths", async () =>
     await Throws<InvalidDataException>(() => { H264.AnnexB(Convert.FromHexString("000000ff01")); return Task.CompletedTask; });
     await Throws<InvalidDataException>(() => { H264.ParameterSets(avcc[..^1], []); return Task.CompletedTask; });
     await Throws<InvalidDataException>(() => { H264.ParameterSets([], new byte[] { 0, 0, 1, 0x65, 1 }); return Task.CompletedTask; });
+});
+await Check("buffered encoder input releases its slot without accepting a phantom ACK", async () =>
+{
+    using var window = new FrameWindow(1);
+    await window.ReserveAsync(1, default);
+    window.CancelReservation(1);
+    window.CancelReservation(1);
+    Require(!window.Acknowledge(1) && window.AcknowledgementMs == 0);
+    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+    await window.ReserveAsync(1, timeout.Token);
+    Require(window.Acknowledge(1) && window.AcknowledgementMs >= 0);
 });
 if (args.Contains("--check-installed-adb"))
 {

@@ -8,6 +8,13 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <PlatformTarget>x64</PlatformTarget>
     <AssemblyName>Dis</AssemblyName>
+    <AssemblyName Condition="'$(DisHostAssemblyName)' != ''">$(DisHostAssemblyName)</AssemblyName>
+    <Version>0.4.4</Version>
+    <Title>Dis Virtual Monitor</Title>
+    <Product>Dis Virtual Monitor</Product>
   </PropertyGroup>
   <ItemGroup><ProjectReference Include="../Dis.Core/Dis.Core.csproj" /></ItemGroup>
+  <ItemGroup Condition="'$(DisUsbToolsArchive)' != ''">
+    <EmbeddedResource Include="$(DisUsbToolsArchive)" LogicalName="Dis.UsbTools.zip" />
+  </ItemGroup>
 </Project>

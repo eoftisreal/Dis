@@ -33,11 +33,13 @@ public final class Wire {
     }
 
     public static Packet read(DataInputStream input) throws IOException {
-        if (input.readInt()!=0x44495331) throw new IOException("Unsupported Dis protocol");
-        int type=input.readUnsignedByte();
-        if (input.readUnsignedByte()!=0 || input.readUnsignedShort()!=0) throw new IOException("Unsupported protocol flags");
-        int length=input.readInt();
-        int sequence=input.readInt();
+        byte[] bytes=new byte[16];input.readFully(bytes);
+        ByteBuffer header=ByteBuffer.wrap(bytes).order(ByteOrder.BIG_ENDIAN);
+        if (header.getInt()!=0x44495331) throw new IOException("Unsupported Dis protocol");
+        int type=header.get() & 0xff;
+        if (header.get()!=0 || header.getShort()!=0) throw new IOException("Unsupported protocol flags");
+        int length=header.getInt();
+        int sequence=header.getInt();
         validateLength(type,length);
         byte[] payload=new byte[length];
         input.readFully(payload);
@@ -47,8 +49,12 @@ public final class Wire {
     /** Callers serialize the entire operation, including both header and body. */
     public static void write(DataOutputStream out, Packet packet) throws IOException {
         validateLength(packet.type,packet.payload.length);
-        out.writeInt(0x44495331); out.writeByte(packet.type); out.writeByte(0); out.writeShort(0);
-        out.writeInt(packet.payload.length); out.writeInt(packet.sequence); out.write(packet.payload); out.flush();
+        // Each unbuffered SSLSocket write can create a separate TLS record. ACKs
+        // must leave as one complete header, not six tiny encrypted writes.
+        byte[] message=ByteBuffer.allocate(16+packet.payload.length).order(ByteOrder.BIG_ENDIAN)
+            .putInt(0x44495331).put((byte)packet.type).put((byte)0).putShort((short)0)
+            .putInt(packet.payload.length).putInt(packet.sequence).put(packet.payload).array();
+        out.write(message);out.flush();
     }
 
     public static byte[] pointer(int kind, int action, int buttons, float x, float y, float pressure, float tiltX, float tiltY) {

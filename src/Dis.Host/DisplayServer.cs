@@ -11,6 +11,8 @@ namespace Dis.Host;
 
 internal sealed record ServerOptions(IPAddress Address, int Port, string DeviceName, Rectangle Bounds,
     int MaxWidth, int MaxHeight, int Fps, int Quality, bool Input, int MaxPixels = 1280 * 720);
+internal sealed record StreamStatistics(string Encoder, int Width, int Height, double Fps, double AckMs, double Mbps,
+    double CaptureEncodeMs, double FrameWaitMs, double WriteMs, string CaptureBackend);
 
 internal sealed class DisplayServer : IAsyncDisposable
 {
@@ -23,7 +25,11 @@ internal sealed class DisplayServer : IAsyncDisposable
     private readonly List<Task> sessions = [];
     private readonly Task acceptTask;
     private int active;
+    private long lastFrameAcknowledged;
+    public long LastFrameAcknowledged => Interlocked.Read(ref lastFrameAcknowledged);
+    public bool HasReceiver => Volatile.Read(ref active) != 0;
     public event Action<string>? Status;
+    public event Action<StreamStatistics>? Statistics;
     public string Fingerprint => pairing.Identity.Fingerprint;
 
     public DisplayServer(ServerOptions options, PairingSession? session = null)
@@ -145,9 +151,10 @@ internal sealed class DisplayServer : IAsyncDisposable
         using var encoderLifetime = encoder;
         if (codec == "jpeg") fps = Math.Min(fps, 30);
         await Wire.WriteAsync(tls, Wire.Json(MessageType.Config,
-            new StreamConfig(hello.Version, codec, size.Width, size.Height, fps, options.Input, options.Input && input.PenAvailable, encoderName)), life.Token);
+            new StreamConfig(hello.Version, codec, size.Width, size.Height, fps, options.Input, options.Input && input.PenAvailable, encoderName,
+                options.Input && input.TouchAvailable, options.Input)), life.Token);
         if (configuration is not null) await Wire.WriteAsync(tls, new(MessageType.CodecConfig, 0, configuration), life.Token);
-        Status?.Invoke($"Connected · {size.Width} × {size.Height} · {encoderName}");
+        Status?.Invoke("Waiting for Android to decode the first frame…");
         var receive = ReceiveAsync();
         var send = SendAsync();
         try
@@ -172,6 +179,7 @@ internal sealed class DisplayServer : IAsyncDisposable
 
         async Task ReceiveAsync()
         {
+            bool confirmed = false;
             long rateStart = Stopwatch.GetTimestamp();
             int count = 0;
             while (true)
@@ -183,6 +191,8 @@ internal sealed class DisplayServer : IAsyncDisposable
                 {
                     case MessageType.Ack:
                         if (!ack.Acknowledge(packet.Sequence)) throw new InvalidDataException("Unexpected frame acknowledgement.");
+                        Interlocked.Exchange(ref lastFrameAcknowledged, Stopwatch.GetTimestamp());
+                        if (!confirmed) { confirmed = true; Status?.Invoke($"Connected · {size.Width} × {size.Height} · {encoderName}"); }
                         break;
                     case MessageType.Input:
                         var pointer = InputEvent.Parse(packet.Payload);
@@ -203,6 +213,7 @@ internal sealed class DisplayServer : IAsyncDisposable
             long stats = Stopwatch.GetTimestamp();
             int sent = 0;
             long bytes = 0;
+            double captureMs = 0, frameWaitMs = 0, writeMs = 0;
             while (true)
             {
                 life.Token.ThrowIfCancellationRequested();
@@ -214,37 +225,49 @@ internal sealed class DisplayServer : IAsyncDisposable
                     geometryChecked = start;
                 }
                 long timestamp = TimestampUs();
+                // Wait before capture/encode, so backpressure cannot age a freshly
+                // captured desktop while it waits for an older frame to be consumed.
+                using var frameDeadline = CancellationTokenSource.CreateLinkedTokenSource(life.Token);
+                frameDeadline.CancelAfter(TimeSpan.FromSeconds(8));
+                uint nextSequence = sequence + 1;
+                long stage = Stopwatch.GetTimestamp();
+                await ack.ReserveAsync(nextSequence, frameDeadline.Token);
+                frameWaitMs += Stopwatch.GetElapsedTime(stage).TotalMilliseconds;
+                stage = Stopwatch.GetTimestamp();
                 byte[] data;
                 if (encoder is not null)
                 {
                     EncodedFrame? frame = first ?? await capture.CaptureH264Async(encoder, timestamp);
+                    captureMs += Stopwatch.GetElapsedTime(stage).TotalMilliseconds;
                     first = null;
                     if (frame is null)
                     {
+                        ack.CancelReservation(nextSequence);
                         var wait = TimeSpan.FromSeconds(1.0 / fps) - Stopwatch.GetElapsedTime(start);
                         await Task.Delay(wait > TimeSpan.Zero ? wait : TimeSpan.FromMilliseconds(2), life.Token); continue;
                     }
                     data = frame.Data; timestamp = frame.TimestampUs;
                 }
-                else data = capture.Capture();
+                else { data = capture.Capture(); captureMs += Stopwatch.GetElapsedTime(stage).TotalMilliseconds; }
                 byte[] payload = new byte[data.Length + 12];
                 BinaryPrimitives.WriteUInt16BigEndian(payload, (ushort)size.Width);
                 BinaryPrimitives.WriteUInt16BigEndian(payload.AsSpan(2), (ushort)size.Height);
                 BinaryPrimitives.WriteInt64BigEndian(payload.AsSpan(4), timestamp);
                 data.CopyTo(payload, 12);
-                using (var frameDeadline = CancellationTokenSource.CreateLinkedTokenSource(life.Token))
-                {
-                    frameDeadline.CancelAfter(TimeSpan.FromSeconds(8));
-                    await ack.ReserveAsync(++sequence, frameDeadline.Token);
-                    await WriteAsync(new(MessageType.Frame, sequence, payload), frameDeadline.Token);
-                }
+                sequence = nextSequence;
+                stage = Stopwatch.GetTimestamp();
+                await WriteAsync(new(MessageType.Frame, sequence, payload), frameDeadline.Token);
+                writeMs += Stopwatch.GetElapsedTime(stage).TotalMilliseconds;
                 sent++;
                 bytes += payload.Length;
                 double seconds = Stopwatch.GetElapsedTime(stats).TotalSeconds;
                 if (seconds >= 2)
                 {
-                    Status?.Invoke($"{encoderName} · {sent / seconds:F1} fps · {bytes * 8 / seconds / 1_000_000:F1} Mbps · {size.Width} × {size.Height}");
+                    Statistics?.Invoke(new(encoderName, size.Width, size.Height, sent / seconds, ack.AcknowledgementMs, bytes * 8 / seconds / 1_000_000,
+                        captureMs / sent, frameWaitMs / sent, writeMs / sent, capture.Backend));
+                    Status?.Invoke($"{encoderName} · {sent / seconds:F1} fps · {ack.AcknowledgementMs:F0} ms frame ACK · {bytes * 8 / seconds / 1_000_000:F1} Mbps · {size.Width} × {size.Height}");
                     stats = Stopwatch.GetTimestamp(); sent = 0; bytes = 0;
+                    captureMs = frameWaitMs = writeMs = 0;
                 }
                 var delay = TimeSpan.FromSeconds(1.0 / fps) - Stopwatch.GetElapsedTime(start);
                 if (delay > TimeSpan.Zero) await Task.Delay(delay, life.Token);
