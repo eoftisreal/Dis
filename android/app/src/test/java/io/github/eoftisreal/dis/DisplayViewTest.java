@@ -80,6 +80,17 @@ public final class DisplayViewTest {
         assertEquals(.25f,number(packets.get(2),4),.001f);
     }
 
+    @Test public void penCanTouchDownWhileASuppressedPalmRemainsOnScreen() {
+        hover(MotionEvent.ACTION_HOVER_ENTER,MotionEvent.TOOL_TYPE_STYLUS);
+        touch(MotionEvent.ACTION_DOWN,MotionEvent.TOOL_TYPE_FINGER,0);
+        MotionEvent event=event(MotionEvent.ACTION_POINTER_DOWN | (1<<MotionEvent.ACTION_POINTER_INDEX_SHIFT),
+            new int[]{0,7},new int[]{MotionEvent.TOOL_TYPE_FINGER,MotionEvent.TOOL_TYPE_STYLUS},
+            new MotionEvent.PointerCoords[]{coords(40,40,.4f),coords(100,50,.8f)},0);
+        view.onTouchEvent(event); event.recycle();
+        assertEquals(3,packets.size());
+        assertPacket(0,1,4); assertPacket(1,1,3); assertPacket(2,1,0);
+    }
+
     @Test public void cancelDoesNotDependOnAFingerStillBeingInTheEvent() {
         touch(MotionEvent.ACTION_DOWN,MotionEvent.TOOL_TYPE_STYLUS,7);
         touch(MotionEvent.ACTION_CANCEL,MotionEvent.TOOL_TYPE_STYLUS,9);

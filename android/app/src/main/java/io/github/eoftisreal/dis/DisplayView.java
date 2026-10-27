@@ -116,7 +116,7 @@ public final class DisplayView extends SurfaceView {
         if (rect.width()<=0 || rect.height()<=0) return true;
         int changed=event.getActionIndex();
         boolean changedPen=penEnabled && isPen(event,changed);
-        if (action==MotionEvent.ACTION_DOWN || (action==MotionEvent.ACTION_POINTER_DOWN && changedPen && kind!=1)) {
+        if (action==MotionEvent.ACTION_DOWN || (action==MotionEvent.ACTION_POINTER_DOWN && changedPen && (!pressed || kind!=1))) {
             if (!rect.contains(event.getX(changed),event.getY(changed))) return true;
             if (!changedPen && stylusInRange) return true;
             cancelPointer();
